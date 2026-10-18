@@ -25,6 +25,18 @@ interface and optional EEG channel selection.
 
 .. autofunction:: aeon_neuro.utils.data_io.load_brainvision_to_numpy
 
+Sample inspection
+-----------------
+
+``inspect_eeg_samples`` scans all decoded samples in bounded windows and reports
+nonfinite counts and first absolute sample locations for affected channels.
+Deferred loading, samples, annotations and metadata remain unchanged. The scan
+is opt-in and does not establish native-file integrity or scientific quality.
+Callers decide how to handle findings before conversion; no automatic repair
+or conversion default is added.
+
+.. autofunction:: aeon_neuro.utils.quality.inspect_eeg_samples
+
 Auxiliary information
 ---------------------
 
