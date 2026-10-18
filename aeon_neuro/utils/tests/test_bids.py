@@ -57,12 +57,13 @@ def test_convert_unsupported_filename(tmp_path):
         convert_eeg_to_bids(tmp_path / "recording.edf", BIDSPath(root=tmp_path))
 
 
-def test_convert_raw_array_roundtrip(tmp_path):
+@pytest.mark.parametrize("line_freq", [50, None])
+def test_convert_raw_array_roundtrip(tmp_path, line_freq):
     """Export in-memory samples and acquisition metadata when explicitly enabled."""
     pytest.importorskip("pybv")
     data = np.array([[1e-6, 2e-6, 3e-6], [4e-6, 5e-6, 6e-6]])
     raw = mne.io.RawArray(data, mne.create_info(["Fp1", "EOG"], 100, ["eeg", "eog"]))
-    raw.info["line_freq"] = 50
+    raw.info["line_freq"] = line_freq
     raw.set_annotations(mne.Annotations([0.01], [0.01], ["stimulus"]))
     destination = BIDSPath(root=tmp_path, subject="01", task="test", datatype="eeg")
 
@@ -74,8 +75,23 @@ def test_convert_raw_array_roundtrip(tmp_path):
     # BrainVision export uses float32; compare physical values at that precision.
     assert_allclose(restored.get_data(), data, rtol=1e-7, atol=0)
     assert restored.get_channel_types() == ["eeg", "eog"]
-    assert restored.info["line_freq"] == 50
+    assert restored.info["line_freq"] == line_freq
     assert_array_equal(restored.annotations.description, ["stimulus"])
     assert_allclose(restored.annotations.onset, [0.01], rtol=0, atol=1e-9)
     assert_allclose(restored.annotations.duration, [0.01], rtol=0, atol=1e-9)
     assert_array_equal(raw.get_data(), data)
+
+
+@pytest.mark.parametrize("line_freq", [-50, 0, float("nan"), float("inf")])
+def test_invalid_line_frequency_before_writing(tmp_path, line_freq):
+    """Reject invalid supplied frequency without creating partial BIDS metadata."""
+    pytest.importorskip("pybv")
+    raw = mne.io.RawArray(np.zeros((1, 100)), mne.create_info(["Cz"], 100, "eeg"))
+    raw.info["line_freq"] = line_freq
+    destination = BIDSPath(root=tmp_path / "bids", subject="01", task="test")
+
+    with pytest.raises(ValueError, match="line_freq"):
+        convert_eeg_to_bids(raw, destination, allow_preload=True, format="BrainVision")
+
+    assert not destination.root.exists()
+    assert raw.info["line_freq"] == line_freq or np.isnan(line_freq)

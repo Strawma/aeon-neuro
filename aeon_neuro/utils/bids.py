@@ -1,5 +1,6 @@
 """Convert native EEG recordings and MNE Raw objects to BIDS."""
 
+from math import isfinite
 from os import PathLike
 from pathlib import Path
 
@@ -43,12 +44,14 @@ def convert_eeg_to_bids(
     TypeError
         If source is neither a filename nor an MNE Raw object.
     ValueError
-        If a filename does not have the .vhdr extension, or MNE-BIDS rejects the
-        recording or output configuration.
+        If supplied line_freq is nonfinite or nonpositive, a filename does not
+        have the .vhdr extension, or MNE-BIDS rejects the recording or output
+        configuration.
 
     Notes
     -----
-    Supplied metadata is assumed correct. No metadata repair, filtering, channel
+    Known mains frequency must be finite and positive; None remains unknown.
+    Other supplied metadata is assumed correct. No repair, filtering, channel
     selection, re-referencing or epoching is performed. Annotations are written
     using MNE-BIDS conventions; event codes may be reassigned. Existing BIDS
     sidecars are not imported when reading a native BrainVision path.
@@ -69,7 +72,12 @@ def convert_eeg_to_bids(
     else:
         raise TypeError("source must be a BrainVision filename or an MNE Raw object.")
 
-    # Delegate metadata checks and preloaded export policy to MNE-BIDS.
+    # The writer can emit invalid mains frequency into metadata before validation.
+    frequency = raw.info["line_freq"]
+    if frequency is not None and (not isfinite(frequency) or frequency <= 0):
+        raise ValueError("line_freq must be finite and positive, or None if unknown.")
+
+    # Delegate remaining metadata checks and preloaded export policy to MNE-BIDS.
     return write_raw_bids(
         raw,
         bids_path,
