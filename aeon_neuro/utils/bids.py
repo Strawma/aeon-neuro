@@ -7,10 +7,18 @@ from mne.io import BaseRaw
 from mne_bids import write_raw_bids
 
 from aeon_neuro.utils.data_io import load_brainvision_to_mne
+from aeon_neuro.utils.metadata_conflicts import reconcile_eeg_metadata
 
 
 def convert_eeg_to_bids(
-    source, bids_path, *, format="auto", allow_preload=False, overwrite=False
+    source,
+    bids_path,
+    *,
+    format="auto",
+    allow_preload=False,
+    overwrite=False,
+    metadata_sources=None,
+    metadata_corrections=None,
 ):
     """Write a BrainVision recording or an MNE Raw object to BIDS.
 
@@ -32,6 +40,17 @@ def convert_eeg_to_bids(
         export requires the optional ``pybv`` package; unchanged copying does not.
     overwrite : bool, default=False
         Whether MNE-BIDS may overwrite an existing output recording.
+    metadata_sources : sequence of dict or None, default=None
+        Caller-matched metadata candidates for ``inspect_eeg_metadata``. Supplying
+        this argument, including an empty list, enables reconciliation before
+        writing. Unresolved assessed conflicts raise ``MetadataConflictError``.
+        Existing sidecars and BIDS inheritance are not discovered automatically.
+    metadata_corrections : dict or None, default=None
+        Explicit final choices passed to ``reconcile_eeg_metadata``: only
+        ``channel_types``, ``line_freq`` and ``correction_source`` are accepted.
+        Supplying a mapping also enables reconciliation. Use the reconciliation
+        helper directly first when the returned decision report must be saved;
+        this converter continues to return only the written BIDSPath.
 
     Returns
     -------
@@ -45,11 +64,14 @@ def convert_eeg_to_bids(
     ValueError
         If a filename does not have the .vhdr extension, or MNE-BIDS rejects the
         recording or output configuration.
+    MetadataConflictError
+        If optional metadata reconciliation finds unresolved blockers. The
+        exception carries a structured report and occurs before writer calls.
 
     Notes
     -----
-    Supplied metadata is assumed correct. No metadata repair, filtering, channel
-    selection, re-referencing or epoching is performed. Annotations are written
+    Without metadata arguments, supplied metadata is assumed correct. No filtering,
+    channel selection, re-referencing or epoching is performed. Annotations are written
     using MNE-BIDS conventions; event codes may be reassigned. Existing BIDS
     sidecars are not imported when reading a native BrainVision path.
 
@@ -69,7 +91,23 @@ def convert_eeg_to_bids(
     else:
         raise TypeError("source must be a BrainVision filename or an MNE Raw object.")
 
-    # Delegate metadata checks and preloaded export policy to MNE-BIDS.
+    if metadata_sources is not None or metadata_corrections is not None:
+        if metadata_corrections is None:
+            metadata_corrections = {}
+        if not isinstance(metadata_corrections, dict) or set(metadata_corrections) - {
+            "channel_types",
+            "line_freq",
+            "correction_source",
+        }:
+            raise ValueError(
+                "metadata_corrections must contain only explicit choices/source."
+            )
+        # Reject unresolved choices before MNE-BIDS can create dataset files.
+        raw, _ = reconcile_eeg_metadata(
+            raw, metadata_sources=metadata_sources, **metadata_corrections
+        )
+
+    # Delegate remaining checks and preloaded export policy to MNE-BIDS.
     return write_raw_bids(
         raw,
         bids_path,

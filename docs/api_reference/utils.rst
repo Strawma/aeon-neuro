@@ -44,3 +44,42 @@ without sample rescaling or calibration repair. The report assesses mains
 frequency only and does not establish complete BIDS metadata validity.
 
 .. autofunction:: aeon_neuro.utils.metadata.prepare_eeg_metadata
+
+Metadata conflicts
+------------------
+
+``inspect_eeg_metadata`` compares imported metadata with explicitly supplied,
+caller-matched sources. It returns all assessed findings without changing or
+loading samples. The bounded schema covers mains frequency, channel roles and
+sampling-rate agreement. ``None`` and ``"n/a"`` remain unknown; imported roles
+may be reader defaults. Source discovery, identity checks and BIDS inheritance
+must be handled before supplying candidates. There is no generic source priority.
+
+``reconcile_eeg_metadata`` returns a Raw copy and a JSON-compatible decision
+report. A unique, valid mains-frequency candidate fills unknown metadata with a
+``MetadataResolutionWarning``. Contradictory known values require explicit final
+choices with ``correction_source``. Invalid candidates remain visible even when
+an explicit choice resolves the finding. Decisions are recorded even when they
+retain the imported value. Sampling-rate disagreements cannot be overridden:
+investigate the source or recording, rather than editing its rate metadata.
+
+``MetadataConflictError`` subclasses ``ValueError`` and carries ``report`` for
+frontend or batch handling. Unknown mains frequency alone does not block.
+Inspection never prompts for input; a caller collects choices and retries.
+Warnings also accompany explicitly resolved conflicts. Reports retain candidate
+origins and decisions, without authenticating their scientific correctness.
+
+``convert_eeg_to_bids`` optionally accepts ``metadata_sources`` and
+``metadata_corrections`` to reconcile before calling the writer. Its default
+behaviour and BIDSPath return are unchanged. Use the helper directly to retain
+the decision report; no provenance file is automatically written into BIDS.
+Neither conversion nor reconciliation changes physical samples or resamples.
+The remaining acquisition metadata and full BIDS validation are separate checks.
+
+.. autofunction:: aeon_neuro.utils.metadata_conflicts.inspect_eeg_metadata
+
+.. autofunction:: aeon_neuro.utils.metadata_conflicts.reconcile_eeg_metadata
+
+.. autoexception:: aeon_neuro.utils.metadata_conflicts.MetadataConflictError
+
+.. autoclass:: aeon_neuro.utils.metadata_conflicts.MetadataResolutionWarning
