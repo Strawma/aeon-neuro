@@ -7,6 +7,7 @@ import platform
 from dataclasses import dataclass
 from importlib.metadata import version
 from numbers import Real
+from os import PathLike
 from pathlib import Path
 
 import numpy as np
@@ -17,11 +18,8 @@ from aeon_neuro.datasets._classification import (
     ClassificationDataset,
     build_classification_dataset,
 )
-from aeon_neuro.datasets._recipe import (
-    _read_tsv,
-    _split_cases,
-    resolve_classification_recipe,
-)
+from aeon_neuro.datasets._recipe import resolve_classification_recipe
+from aeon_neuro.datasets._recipe_split import _read_tsv, _split_cases
 from aeon_neuro.utils.data_io import _check_edf_layout
 
 
@@ -55,6 +53,22 @@ def _hash(path):
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _fingerprint(path):
+    stat = path.stat()
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+def _check_sources(snapshots):
+    try:
+        changed = any(
+            _fingerprint(path) != original for path, original in snapshots.items()
+        )
+    except OSError as error:
+        raise ValueError("Source files changed during recipe construction.") from error
+    if changed:
+        raise ValueError("Source files changed during recipe construction.")
 
 
 def _sidecar(path, suffix, extension):
@@ -148,6 +162,11 @@ def _channel_names(raw, selector, path):
             raise ValueError("BIDS channel identities are missing or ambiguous.")
         wanted = {name.lower() for name in selector["types"]}
         selected = [name for name in names if types[name] in wanted]
+    unknown = set(selector.get("exclude_names", [])) - set(names)
+    if unknown:
+        raise ValueError(
+            f"Excluded channel names are absent from source: {sorted(unknown)}."
+        )
     selected = [
         name for name in selected if name not in selector.get("exclude_names", [])
     ]
@@ -271,6 +290,22 @@ def _discover(root, recipe):
 
 def _plan(root, recipe):
     paths = _discover(root, recipe)
+    # Snapshot metadata before any reader/table interpretation. Include native
+    # companions in selected directories, since a header can reference a payload.
+    inventory = set()
+    for path in paths:
+        inventory.add(Path(path.fpath))
+        inventory.update(
+            item
+            for item in path.fpath.parent.iterdir()
+            if item.suffix.lower() in {".eeg", ".fdt", ".vmrk"}
+        )
+        for parent in (path.fpath.parent, *path.fpath.parent.parents):
+            if not parent.is_relative_to(root):
+                break
+            inventory.update(parent.glob("*.json"))
+            inventory.update(parent.glob("*.tsv"))
+    snapshots = {path: _fingerprint(path) for path in inventory}
     participants, files = {}, set()
     participant_table = root / "participants.tsv"
     if participant_table.exists():
@@ -289,12 +324,22 @@ def _plan(root, recipe):
     for path in paths:
         raw = _open_raw(path)
         try:
+            native_files = [
+                Path(value).resolve() for value in raw.filenames if value is not None
+            ]
+            if not native_files:
+                raise ValueError("Native reader did not identify its signal source.")
+            for source in native_files:
+                snapshots.setdefault(source, _fingerprint(source))
             recording = path.fpath.relative_to(root).as_posix()
             subject = None if path.subject is None else f"sub-{path.subject}"
             info = {
                 "recording_id": recording,
                 "filepath": recording,
-                "source_identity": str(path.fpath.resolve()),
+                "source_identity": json.dumps(
+                    [_fingerprint(source)[:2] for source in native_files]
+                ),
+                "signal_sources": [str(source) for source in native_files],
                 "bids_subject": subject,
                 "session": path.session,
                 "run": path.run,
@@ -478,12 +523,14 @@ def _plan(root, recipe):
             "Explicit class_order must cover exactly the retained classes."
         )
     recipe["target"].setdefault("class_order", classes)
+    _check_sources(snapshots)
     return (
         recordings,
         cases,
         exclusions,
         adjustments,
         files,
+        snapshots,
         (len(cases), len(output_names), output_size),
     )
 
@@ -570,22 +617,31 @@ def load_bids_classification(
     ):
         raise ValueError("max_memory_mb must be finite and positive.")
     recipe_dir = (
-        Path(recipe).resolve().parent if isinstance(recipe, (str, Path)) else None
+        Path(recipe).resolve().parent if isinstance(recipe, (str, PathLike)) else None
     )
     resolved, origins = resolve_classification_recipe(recipe, random_state=random_state)
-    recordings, cases, exclusions, adjustments, sources, shape = _plan(root, resolved)
+    recordings, cases, exclusions, adjustments, sources, source_stats, shape = _plan(
+        root, resolved
+    )
     origins.setdefault("selection.tasks", "data:single_available_task")
     origins.setdefault("target.class_order", "data:retained_label_vocabulary")
+    if (
+        resolved["evaluation"]["split"]["method"] == "supplied_manifest"
+        and recipe_dir is not None
+    ):
+        manifest = (recipe_dir / resolved["evaluation"]["split"]["manifest"]).resolve()
+        if not manifest.is_relative_to(recipe_dir):
+            raise ValueError("Split manifest escapes the recipe directory.")
+        source_stats[manifest] = _fingerprint(manifest)
+        sources.add(manifest)
     splits = _split_cases(cases, resolved, recipe_dir)
+    _check_sources(source_stats)
     nbytes = int(np.prod(shape)) * 8
     if destination is None and nbytes > max_memory_mb * 1024**2:
         raise ValueError(
             f"Case array requires {nbytes} bytes; "
             "supply output_dir for a memory-mapped result."
         )
-    source_stats = {
-        path: (path.stat().st_size, path.stat().st_mtime_ns) for path in sources
-    }
     report = {
         "status": "planned",
         "spec_version": resolved["spec_version"],
@@ -630,10 +686,12 @@ def load_bids_classification(
             for path in (
                 Path(__file__),
                 Path(__file__).with_name("_recipe.py"),
+                Path(__file__).with_name("_recipe_split.py"),
                 Path(__file__).with_name("_classification.py"),
             )
         },
     }
+    _check_sources(source_stats)
     if destination is not None:
         destination.mkdir(parents=True)
         _write_json(destination / "run-report.json", report)
@@ -681,11 +739,7 @@ def load_bids_classification(
                 raw.close()
         if isinstance(X, np.memmap):
             X.flush()
-        if any(
-            (path.stat().st_size, path.stat().st_mtime_ns) != original
-            for path, original in source_stats.items()
-        ):
-            raise ValueError("Source files changed during recipe construction.")
+        _check_sources(source_stats)
         y = np.asarray([row["label"] for row in cases])
         groups = np.asarray([row["group_id"] for row in cases])
         metadata = {

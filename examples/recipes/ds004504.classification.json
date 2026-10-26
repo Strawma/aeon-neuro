@@ -1,0 +1,41 @@
+{
+  "$schema": "../../aeon_neuro/datasets/classification_recipe.schema.json",
+  "spec_version": "0.3.0-draft",
+  "selection": {
+    "subjects": [
+      "001",
+      "002",
+      "003",
+      "004",
+      "037",
+      "038",
+      "039",
+      "040",
+      "066",
+      "067",
+      "068",
+      "069"
+    ],
+    "tasks": [
+      "eyesclosed"
+    ]
+  },
+  "target": {
+    "source": "participants.tsv",
+    "column": "Group"
+  },
+  "segmentation": {
+    "mode": "fixed_windows",
+    "window_seconds": 2,
+    "interval": {
+      "kind": "time_range",
+      "start_seconds": 10,
+      "stop_seconds": 70
+    }
+  },
+  "evaluation": {
+    "split": {
+      "stratify_by": "target"
+    }
+  }
+}

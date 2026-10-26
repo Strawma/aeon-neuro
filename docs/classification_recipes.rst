@@ -76,7 +76,12 @@ channels/rates, source label dictionaries, setting origins, source and module
 hashes, versions, exclusions, adjustments and class/group counts. Planning
 errors occur before output creation. An extraction/write failure retains failed
 status; never consume arrays from an incomplete run. Retrying needs a new
-destination. Source files changing during construction are rejected.
+destination. Source fingerprints are taken before metadata interpretation and
+checked after planning, hashing and extraction. Source changes are rejected.
+Physical signal identity is checked separately from BIDS header identity, so
+two BrainVision headers referencing the same signal cannot conceal overlapping
+train/test samples. These checks do not establish independence of copied or
+otherwise correlated recordings; subject identity still needs source review.
 
 Run the same utility with ``output_dir=None`` for an in-memory result with its
 metadata returned instead of written. Recipes and input files remain untouched.
@@ -117,6 +122,34 @@ predictions. Parameters are declared before fitting and the test is not used
 for selection. This is an engineering pilot, not a general benchmark. CPU time
 and memory depend on the selected data and classifier.
 
+Additional dataset templates
+----------------------------
+
+``examples/recipes/ds004504.classification.json`` selects twelve participants
+from OpenNeuro ds004504, version 1.0.9: the first four source IDs in each of
+groups A, C and F. It uses original eyes-closed EEGLAB recordings and the source
+``participants.tsv:Group`` labels, with two-second windows over [10,70) seconds
+and participant-level target stratification. The source describes these groups
+as Alzheimer's disease, controls and frontotemporal dementia. These choices
+exercise three-class loading; a small split cannot establish clinical utility.
+Use original participant folders rather than preprocessed derivatives.
+
+``examples/recipes/eegmmidb.classification.json`` expects a BIDS copy prepared
+from PhysioNet EEG Motor Movement/Imagery version 1.0.0, subjects S001--S006,
+and only runs 04, 08 and 12. Prepare each native EDF with
+``aeon_neuro.utils.bids.convert_eeg_to_bids``, using BIDS subject IDs 001--006,
+task ``leftrightimagery`` and the original run number. Its EDF annotations
+become ``events.tsv:trial_type``. For these particular runs, T1/T2 mean imagined
+left/right fist and T0 is rest. The recipe excludes T0, takes [0,4) second
+epochs and keeps all runs of each participant in one partition. Other runs
+have different label meanings and must not be mixed under this mapping.
+
+These templates use the same loader and classifier runner as COVID and RPS.
+Dataset acquisition and source eligibility remain separate steps. Compare
+against the saved baseline and inspect participant/group counts as well as
+case counts; no test-set tuning or automatic scientific-protocol selection is
+performed.
+
 Optional alternatives
 ---------------------
 
@@ -139,6 +172,7 @@ Schema, defaults and limits
 
 The packaged ``classification_recipe.schema.json`` validates types and supported
 keys; ``resolve_classification_recipe`` then supplies omission defaults explicitly.
+See also :doc:`recipe_format` for the minimum author input and omission defaults.
 JSON Schema default annotations do not themselves fill values. Actual source
 facts are resolved at BIDS inspection. The draft supports participant/event
 targets, fixed windows, event epochs, named/type/prefix channel selection and

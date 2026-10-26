@@ -18,8 +18,18 @@ Classification case construction
 
 .. autofunction:: aeon_neuro.datasets.validate_group_split
 
-Classification recipes (experimental)
-------------------------------------
+Classification recipe format (experimental)
+------------------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   ../recipe_format
+
+.. autofunction:: aeon_neuro.datasets.resolve_classification_recipe
+
+Classification recipe loading (experimental)
+-------------------------------------------
 
 .. toctree::
    :maxdepth: 1
@@ -27,7 +37,5 @@ Classification recipes (experimental)
    ../classification_recipes
 
 .. autoclass:: aeon_neuro.datasets.ClassificationRecipeResult
-
-.. autofunction:: aeon_neuro.datasets.resolve_classification_recipe
 
 .. autofunction:: aeon_neuro.datasets.load_bids_classification

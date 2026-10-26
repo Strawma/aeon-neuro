@@ -1,0 +1,37 @@
+{
+  "$schema": "../../aeon_neuro/datasets/classification_recipe.schema.json",
+  "spec_version": "0.3.0-draft",
+  "selection": {
+    "subjects": [
+      "001",
+      "002",
+      "003",
+      "004",
+      "005",
+      "006"
+    ],
+    "tasks": [
+      "leftrightimagery"
+    ],
+    "runs": [
+      "04",
+      "08",
+      "12"
+    ]
+  },
+  "target": {
+    "source": "events.tsv",
+    "column": "trial_type",
+    "mapping": {
+      "T1": "imagined_left_fist",
+      "T2": "imagined_right_fist"
+    },
+    "exclude_values": [
+      "T0"
+    ]
+  },
+  "segmentation": {
+    "mode": "event_epochs",
+    "stop_seconds": 4
+  }
+}

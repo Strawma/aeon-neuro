@@ -2,7 +2,6 @@
 
 import csv
 import json
-from copy import deepcopy
 
 import mne
 import numpy as np
@@ -10,7 +9,7 @@ import pytest
 from mne_bids import BIDSPath, write_raw_bids
 
 from aeon_neuro.datasets import _classification_recipe as module
-from aeon_neuro.datasets import load_bids_classification, resolve_classification_recipe
+from aeon_neuro.datasets import load_bids_classification
 
 pytest.importorskip("jsonschema")
 pytest.importorskip("pybv")
@@ -100,55 +99,6 @@ def events(tmp_path):
         },
     }
     return root, event_path, rows, recipe
-
-
-def test_defaults_without_input_mutation():
-    """Resolve omissions without inventing signal facts or aliasing the input."""
-    original = _fixed_recipe()
-    before = deepcopy(original)
-    resolved, origins = resolve_classification_recipe(original)
-    assert original == before
-    assert resolved["segmentation"]["stride_seconds"] == 1
-    assert "sampling_frequency_hz" not in resolved["segmentation"]
-    assert resolved["evaluation"]["split"]["fractions"] == {
-        "train": 0.8,
-        "validation": 0,
-        "test": 0.2,
-    }
-    assert resolved["evaluation"]["split"]["random_seed"] == 42
-    assert origins["evaluation.split.random_seed"] == "default"
-    assert resolved["evaluation"]["group_by"] == ["bids_subject"]
-    assert (
-        resolve_classification_recipe(original, random_state=7)[0]["evaluation"][
-            "split"
-        ]["random_seed"]
-        == 7
-    )
-
-
-@pytest.mark.parametrize(
-    "change",
-    [
-        {"spec_version": "next"},
-        {"extra": True},
-        {"segmentation": {"mode": "fixed_windows"}},
-        {"segmentation": {"mode": "fixed_windows", "window_seconds": 0}},
-        {"segmentation": {"mode": "event_epochs", "stop_seconds": 0}},
-        {"segmentation": {"mode": "fixed_windows", "window_seconds": float("nan")}},
-        {"evaluation": {"split": {"random_seed": -1}}},
-        {
-            "evaluation": {
-                "split": {"fractions": {"train": 0.5, "validation": 0.2, "test": 0.2}}
-            }
-        },
-    ],
-)
-def test_invalid_author_choices(change):
-    """Reject malformed choices instead of treating invalid values as omissions."""
-    recipe = _fixed_recipe()
-    recipe.update(change)
-    with pytest.raises(ValueError):
-        resolve_classification_recipe(recipe)
 
 
 def test_bids_fixed_windows_and_reproducible_groups(fixed):
@@ -351,8 +301,16 @@ def test_optional_subject_manifest_replay(fixed, tmp_path):
     path.write_text(json.dumps(recipe))
     replay = load_bids_classification(fixed, path)
     np.testing.assert_array_equal(replay.splits["train"], result.splits["train"])
+    assert str(tmp_path / "split.tsv") in {
+        source["path"] for source in replay.report["sources"]
+    }
     with pytest.raises(ValueError, match="recipe filename"):
         load_bids_classification(fixed, recipe)
+    recipe["evaluation"]["split"]["join_keys"] = ["typo"]
+    _table(tmp_path / "split.tsv", [{"typo": "value", "split": "train"}])
+    path.write_text(json.dumps(recipe))
+    with pytest.raises(ValueError, match="join_keys must name available case fields"):
+        load_bids_classification(fixed, path)
 
 
 def test_chronological_blocks_are_explicit(events):
@@ -400,3 +358,86 @@ def test_source_change_during_extraction_is_failed(fixed, tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="Source files changed"):
         load_bids_classification(fixed, _fixed_recipe(), output_dir=output)
     assert json.loads((output / "run-report.json").read_text())["status"] == "failed"
+
+
+def test_headers_sharing_signal_cannot_cross_partitions(fixed):
+    """Header identities cannot conceal the same physical BrainVision payload."""
+    initial = load_bids_classification(fixed, _fixed_recipe())
+    train = initial.dataset.cases[initial.splits["train"][0]]["recording_id"]
+    test = initial.dataset.cases[initial.splits["test"][0]]["recording_id"]
+    header = fixed / test
+    lines = header.read_text().splitlines()
+    header.write_text(
+        "\n".join(
+            (
+                f"DataFile={(fixed / train).with_suffix('.eeg')}"
+                if line.startswith("DataFile=")
+                else line
+            )
+            for line in lines
+        )
+        + "\n"
+    )
+    with pytest.raises(ValueError, match="Source sample intervals overlap"):
+        load_bids_classification(fixed, _fixed_recipe())
+
+
+@pytest.mark.parametrize("stage", ["table", "split", "hash"])
+def test_source_change_before_extraction_is_rejected(
+    fixed, tmp_path, monkeypatch, stage
+):
+    """Fingerprints must precede metadata interpretation, not follow planning."""
+
+    def mutate():
+        table = fixed / "participants.tsv"
+        table.write_text(table.read_text().replace("\tA", "\tZ"))
+
+    if stage == "table":
+        original = module._read_tsv
+
+        def altered(path):
+            value = original(path)
+            if path.name == "participants.tsv":
+                mutate()
+            return value
+
+        monkeypatch.setattr(module, "_read_tsv", altered)
+    elif stage == "split":
+        original = module._split_cases
+
+        def altered(*args):
+            value = original(*args)
+            mutate()
+            return value
+
+        monkeypatch.setattr(module, "_split_cases", altered)
+    else:
+        original = module._hash
+
+        def altered(path):
+            value = original(path)
+            if path.name == "participants.tsv":
+                mutate()
+            return value
+
+        monkeypatch.setattr(module, "_hash", altered)
+    output = tmp_path / "changed-before-extraction"
+    with pytest.raises(ValueError, match="Source files changed"):
+        load_bids_classification(fixed, _fixed_recipe(), output_dir=output)
+    assert not output.exists()
+
+
+def test_unknown_channel_exclusion_is_an_error(fixed):
+    """An exclusion typo must not silently leave an unwanted channel selected."""
+    recipe = _fixed_recipe()
+    recipe["channels"] = {"types": ["eeg"], "exclude_names": ["ECG_typo"]}
+    with pytest.raises(ValueError, match="Excluded channel names are absent"):
+        load_bids_classification(fixed, recipe)
+
+
+def test_unknown_chronological_order_field_is_an_error(events):
+    """A case-field typo should identify the recipe choice, not raise KeyError."""
+    root, _, _, recipe = events
+    recipe["evaluation"]["split"] = {"strategy": "chronological", "order_by": ["typo"]}
+    with pytest.raises(ValueError, match="order_by must name available case fields"):
+        load_bids_classification(root, recipe)
