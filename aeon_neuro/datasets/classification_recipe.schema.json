@@ -1,0 +1,669 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Proposed aeon-neuro classification recipe, discussion draft 0.3.0",
+  "description": "Small author input. Defaults are specified, not implemented; JSON Schema validation does not insert them. No aeon-neuro API is implemented.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "spec_version": {
+      "const": "0.3.0-draft"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1
+    },
+    "selection": {
+      "type": "object",
+      "properties": {
+        "subjects": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sessions": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tasks": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runs": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "participants.tsv",
+            "events.tsv"
+          ]
+        },
+        "column": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mapping": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Omitted: identity on non-missing source strings. Metadata Levels are display descriptions, not silent remapping."
+        },
+        "exclude_values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "class_order": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "missing_value": {
+          "enum": [
+            "error",
+            "drop_and_report"
+          ],
+          "default": "error"
+        }
+      },
+      "required": [
+        "source",
+        "column"
+      ],
+      "additionalProperties": false
+    },
+    "channels": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "names": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "names"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "types": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "exclude_names": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true,
+              "default": []
+            }
+          },
+          "required": [
+            "types"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "include_prefixes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "exclude_names": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true,
+              "default": []
+            }
+          },
+          "required": [
+            "include_prefixes"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "If omitted, select channels explicitly identified as EEG by trusted BIDS metadata, in source order. Never infer player identity."
+    },
+    "segmentation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "const": "fixed_windows"
+            },
+            "window_seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "stride_seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "If omitted, equal to window_seconds; a dependent default, not a fixed literal."
+            },
+            "interval": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "time_range"
+                    },
+                    "start_seconds": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0
+                    },
+                    "stop_seconds": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "boundary_values": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "uniqueItems": true,
+                      "default": []
+                    },
+                    "boundary_action": {
+                      "enum": [
+                        "error",
+                        "exclude_recording"
+                      ],
+                      "default": "error"
+                    },
+                    "short_recording_action": {
+                      "enum": [
+                        "error",
+                        "truncate_and_report"
+                      ],
+                      "default": "error"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "first_state_interval"
+                    },
+                    "start_seconds": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0
+                    },
+                    "stop_seconds": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "boundary_values": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "uniqueItems": true,
+                      "default": []
+                    },
+                    "boundary_action": {
+                      "enum": [
+                        "error",
+                        "exclude_recording"
+                      ],
+                      "default": "error"
+                    },
+                    "short_recording_action": {
+                      "enum": [
+                        "error",
+                        "truncate_and_report"
+                      ],
+                      "default": "error"
+                    },
+                    "state_column": {
+                      "type": "string",
+                      "minLength": 1,
+                      "default": "trial_type"
+                    },
+                    "initial_state": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "end_states": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true
+                    },
+                    "unresolved_state_action": {
+                      "enum": [
+                        "error",
+                        "exclude_recording"
+                      ],
+                      "default": "error"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "initial_state",
+                    "end_states"
+                  ],
+                  "additionalProperties": false
+                }
+              ],
+              "description": "If omitted, the full actual recording; no eye-state or rest interpretation is inferred."
+            }
+          },
+          "required": [
+            "mode",
+            "window_seconds"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "const": "event_epochs"
+            },
+            "start_seconds": {
+              "type": "number",
+              "default": 0
+            },
+            "stop_seconds": {
+              "type": "number"
+            },
+            "onset_column": {
+              "type": "string",
+              "minLength": 1,
+              "default": "onset"
+            },
+            "sample_column": {
+              "type": "string",
+              "minLength": 1
+            },
+            "event_id_column": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "mode",
+            "stop_seconds"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "evaluation": {
+      "type": "object",
+      "properties": {
+        "group_by": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": [
+            "bids_subject"
+          ]
+        },
+        "group_definitions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "integer_bins"
+              },
+              "column": {
+                "type": "string",
+                "minLength": 1
+              },
+              "bin_size": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "origin": {
+                "type": "integer",
+                "default": 1
+              }
+            },
+            "required": [
+              "kind",
+              "column",
+              "bin_size"
+            ],
+            "additionalProperties": false
+          },
+          "default": {}
+        },
+        "split": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "const": "generated",
+                  "default": "generated"
+                },
+                "strategy": {
+                  "const": "shuffle",
+                  "default": "shuffle"
+                },
+                "fractions": {
+                  "type": "object",
+                  "properties": {
+                    "train": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "exclusiveMaximum": 1
+                    },
+                    "validation": {
+                      "type": "number",
+                      "minimum": 0,
+                      "exclusiveMaximum": 1
+                    },
+                    "test": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "exclusiveMaximum": 1
+                    }
+                  },
+                  "required": [
+                    "train",
+                    "validation",
+                    "test"
+                  ],
+                  "additionalProperties": false,
+                  "default": {
+                    "train": 0.8,
+                    "validation": 0,
+                    "test": 0.2
+                  },
+                  "description": "Override all three together. Sum must equal one, checked outside JSON Schema."
+                },
+                "random_seed": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295,
+                  "default": 42
+                },
+                "stratify_by": {
+                  "enum": [
+                    "target",
+                    null
+                  ],
+                  "default": null
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "const": "generated",
+                  "default": "generated"
+                },
+                "strategy": {
+                  "const": "chronological"
+                },
+                "fractions": {
+                  "type": "object",
+                  "properties": {
+                    "train": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "exclusiveMaximum": 1
+                    },
+                    "validation": {
+                      "type": "number",
+                      "minimum": 0,
+                      "exclusiveMaximum": 1
+                    },
+                    "test": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "exclusiveMaximum": 1
+                    }
+                  },
+                  "required": [
+                    "train",
+                    "validation",
+                    "test"
+                  ],
+                  "additionalProperties": false,
+                  "default": {
+                    "train": 0.8,
+                    "validation": 0,
+                    "test": 0.2
+                  },
+                  "description": "Override all three together. Sum must equal one, checked outside JSON Schema."
+                },
+                "random_seed": {
+                  "type": "null",
+                  "default": null
+                },
+                "stratify_by": {
+                  "type": "null",
+                  "default": null
+                },
+                "order_by": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "strategy",
+                "order_by"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "const": "supplied_manifest"
+                },
+                "manifest": {
+                  "type": "string",
+                  "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\:]+$"
+                },
+                "join_keys": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                },
+                "split_column": {
+                  "type": "string",
+                  "minLength": 1,
+                  "default": "split"
+                }
+              },
+              "required": [
+                "method",
+                "manifest",
+                "join_keys"
+              ],
+              "additionalProperties": false
+            }
+          ],
+          "description": "Omitted: generated shuffled BIDS-subject groups, 80/0/20, seed 42, no stratification."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "spec_version",
+    "target",
+    "segmentation"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "target": {
+            "properties": {
+              "source": {
+                "const": "events.tsv"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "segmentation": {
+            "properties": {
+              "mode": {
+                "const": "event_epochs"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
