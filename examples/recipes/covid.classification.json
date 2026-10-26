@@ -1,0 +1,60 @@
+{
+  "$schema": "../../aeon_neuro/datasets/classification_recipe.schema.json",
+  "spec_version": "0.3.0-draft",
+  "selection": {
+    "tasks": [
+      "COVID"
+    ]
+  },
+  "target": {
+    "source": "participants.tsv",
+    "column": "group"
+  },
+  "channels": {
+    "names": [
+      "Fp1",
+      "Fp2",
+      "F3",
+      "F4",
+      "C3",
+      "C4",
+      "P3",
+      "P4",
+      "O1",
+      "O2",
+      "F7",
+      "F8",
+      "T3",
+      "T4",
+      "T5",
+      "T6",
+      "CZ",
+      "FZ",
+      "PZ"
+    ]
+  },
+  "segmentation": {
+    "mode": "fixed_windows",
+    "window_seconds": 2,
+    "interval": {
+      "kind": "first_state_interval",
+      "start_seconds": 10,
+      "stop_seconds": 480,
+      "initial_state": "eyes_closed",
+      "end_states": [
+        "eyes_open"
+      ],
+      "boundary_values": [
+        "discontinuity"
+      ],
+      "boundary_action": "exclude_recording",
+      "short_recording_action": "truncate_and_report",
+      "unresolved_state_action": "exclude_recording"
+    }
+  },
+  "evaluation": {
+    "split": {
+      "stratify_by": "target"
+    }
+  }
+}

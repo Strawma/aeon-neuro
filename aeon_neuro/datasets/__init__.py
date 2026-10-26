@@ -11,6 +11,9 @@ __all__ = [
     "make_fixed_length_cases",
     "make_event_cases",
     "validate_group_split",
+    "ClassificationRecipeResult",
+    "load_bids_classification",
+    "resolve_classification_recipe",
 ]
 
 from aeon_neuro.datasets._classification import (
@@ -21,7 +24,12 @@ from aeon_neuro.datasets._classification import (
     make_recording_cases,
     validate_group_split,
 )
+from aeon_neuro.datasets._classification_recipe import (
+    ClassificationRecipeResult,
+    load_bids_classification,
+)
 from aeon_neuro.datasets._data_loaders import load_eeg_classification
+from aeon_neuro.datasets._recipe import resolve_classification_recipe
 from aeon_neuro.datasets._single_problem_loaders import (
     load_kdd_example,
     load_kdd_full_example,

@@ -17,3 +17,17 @@ Classification case construction
 .. autofunction:: aeon_neuro.datasets.build_classification_dataset
 
 .. autofunction:: aeon_neuro.datasets.validate_group_split
+
+Classification recipes (experimental)
+------------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   ../classification_recipes
+
+.. autoclass:: aeon_neuro.datasets.ClassificationRecipeResult
+
+.. autofunction:: aeon_neuro.datasets.resolve_classification_recipe
+
+.. autofunction:: aeon_neuro.datasets.load_bids_classification
