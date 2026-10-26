@@ -27,3 +27,15 @@ Classification recipe format (experimental)
    ../recipe_format
 
 .. autofunction:: aeon_neuro.datasets.resolve_classification_recipe
+
+Classification recipe loading (experimental)
+-------------------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   ../classification_recipes
+
+.. autoclass:: aeon_neuro.datasets.ClassificationRecipeResult
+
+.. autofunction:: aeon_neuro.datasets.load_bids_classification
