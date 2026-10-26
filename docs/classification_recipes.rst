@@ -86,6 +86,70 @@ otherwise correlated recordings; subject identity still needs source review.
 Run the same utility with ``output_dir=None`` for an in-memory result with its
 metadata returned instead of written. Recipes and input files remain untouched.
 
+Included COVID and RPS examples
+------------------------------
+
+``examples/recipes/covid.classification.json`` selects 19 named scalp channels
+and two-second windows within the initial eyes-closed interval, capped at
+10--480 seconds. State meaning, source-specific discontinuity exclusions and
+permission to truncate a short recording are explicit choices. It uses source
+``participants.tsv:group`` labels and participant-group stratification. Supply
+enough eligible participants from both cohorts; a one-person inspection cache
+cannot provide a subject-held-out classification problem. This does not
+reproduce an existing archive or establish diagnostic validity.
+
+``examples/recipes/rps.classification.json`` selects pair 31, both ``1-`` and
+``2-`` channel-name banks, and ``player1_resp`` as the target. Source strings
+1/2/3 are labels, with rock/paper/scissors descriptions retained from the source
+dictionary. Code 0 is explicitly excluded. Decision-onset epochs are [0,2)
+seconds. Blocks are defined from original trial numbers, in bins of 40 with
+origin 1, before exclusions; whole blocks stay together. This evaluates joint
+EEG on held-out blocks of that pair, not future blocks or unseen people.
+Prefixes alone do not establish which bank belongs to a player. Broader RPS
+layouts and single-player correspondence require separate review.
+
+From this source checkout, with its dependencies available:
+
+.. code-block:: bash
+
+   PYTHONPATH="$PWD" python examples/recipes/run_recipe.py \
+       /data/pinned-rps-bids examples/recipes/rps.classification.json \
+       /results/new-rps-run --classifier csp
+
+The example fits Pair 3's merged CSP classifier with LDA and a most-frequent
+baseline on the same train/test assignments, saving metrics and held-out case
+predictions. Parameters are declared before fitting and the test is not used
+for selection. This is an engineering pilot, not a general benchmark. CPU time
+and memory depend on the selected data and classifier.
+
+Additional dataset templates
+----------------------------
+
+``examples/recipes/ds004504.classification.json`` selects twelve participants
+from OpenNeuro ds004504, version 1.0.9: the first four source IDs in each of
+groups A, C and F. It uses original eyes-closed EEGLAB recordings and the source
+``participants.tsv:Group`` labels, with two-second windows over [10,70) seconds
+and participant-level target stratification. The source describes these groups
+as Alzheimer's disease, controls and frontotemporal dementia. These choices
+exercise three-class loading; a small split cannot establish clinical utility.
+Use original participant folders rather than preprocessed derivatives.
+
+``examples/recipes/eegmmidb.classification.json`` expects a BIDS copy prepared
+from PhysioNet EEG Motor Movement/Imagery version 1.0.0, subjects S001--S006,
+and only runs 04, 08 and 12. Prepare each native EDF with
+``aeon_neuro.utils.bids.convert_eeg_to_bids``, using BIDS subject IDs 001--006,
+task ``leftrightimagery`` and the original run number. Its EDF annotations
+become ``events.tsv:trial_type``. For these particular runs, T1/T2 mean imagined
+left/right fist and T0 is rest. The recipe excludes T0, takes [0,4) second
+epochs and keeps all runs of each participant in one partition. Other runs
+have different label meanings and must not be mixed under this mapping.
+
+These templates use the same loader and classifier runner as COVID and RPS.
+Dataset acquisition and source eligibility remain separate steps. Compare
+against the saved baseline and inspect participant/group counts as well as
+case counts; no test-set tuning or automatic scientific-protocol selection is
+performed.
+
 Optional alternatives
 ---------------------
 

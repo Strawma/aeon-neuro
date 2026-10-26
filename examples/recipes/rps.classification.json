@@ -1,0 +1,43 @@
+{
+  "$schema": "../../aeon_neuro/datasets/classification_recipe.schema.json",
+  "spec_version": "0.3.0-draft",
+  "selection": {
+    "subjects": [
+      "31"
+    ],
+    "tasks": [
+      "RPS"
+    ]
+  },
+  "target": {
+    "source": "events.tsv",
+    "column": "player1_resp",
+    "exclude_values": [
+      "0"
+    ]
+  },
+  "channels": {
+    "include_prefixes": [
+      "1-",
+      "2-"
+    ]
+  },
+  "segmentation": {
+    "mode": "event_epochs",
+    "stop_seconds": 2,
+    "event_id_column": "trial_num"
+  },
+  "evaluation": {
+    "group_by": [
+      "recording",
+      "block"
+    ],
+    "group_definitions": {
+      "block": {
+        "kind": "integer_bins",
+        "column": "trial_num",
+        "bin_size": 40
+      }
+    }
+  }
+}
