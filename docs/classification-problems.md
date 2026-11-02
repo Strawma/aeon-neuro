@@ -89,3 +89,6 @@ preprocessing performed before case construction.
 The returned assignment snapshot is an inspection record, not a persistent
 certificate. Revalidate against the current dataset before fitting or reusing
 assignments after any changes.
+
+The optional [experiment adapter](classification-experiments.md) consumes these
+explicit assignments and writes verified tsml-eval results with case mappings.

@@ -25,6 +25,10 @@ develop the `aeon-neuro` codebase and for most other contributions to the projec
 
 ## Optional Dependencies
 
+The optional [classification experiment adapter](classification-experiments.md)
+uses the `tsml` extra on Python 3.12 or later. Its published tsml-eval dependency
+currently requires aeon below 1.6; the guide records the tested combination.
+
 All installation options include the core dependencies required to run the framework
 components of `aeon-neuro`. Some estimators and functionality require optional dependencies.
 Without these dependencies, you may find that you will be prompted to install an
