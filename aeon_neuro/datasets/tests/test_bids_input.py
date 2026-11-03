@@ -51,9 +51,11 @@ def bids(tmp_path, request):
         stem.with_name(stem.name + "_channels.tsv").write_text(
             "name\ttype\tunits\nC3\tEEG\tuV\nC4\tEEG\tuV\n"
         )
+        # Keep BOM reader coverage independent of the host's default encoding.
         stem.with_name(stem.name + "_events.tsv").write_text(
             "\ufeffonset\tduration\ttrial_type\tsample\n"
-            "1\t2\tleft\t32\n4\t2\tright\t128\n"
+            "1\t2\tleft\t32\n4\t2\tright\t128\n",
+            encoding="utf-8",
         )
         paths.append(path)
     return tmp_path, paths
