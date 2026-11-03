@@ -1,0 +1,21 @@
+{
+  "format_version": 1,
+  "problem": {"id": "cho2017-central-imagery", "version": "1"},
+  "target": {
+    "source": "event",
+    "column": "trial_type",
+    "mapping": {"left_hand": "left_hand", "right_hand": "right_hand"}
+  },
+  "group": {"source": "event", "column": "trial_group"},
+  "events": {"onset": "onset", "id": "original_trial_id"},
+  "case_fields": {
+    "participant_id": {"source": "recording", "column": "participant_id"},
+    "session": {"source": "recording", "column": "session"},
+    "trial_id": {"source": "event", "column": "original_trial_id"},
+    "paper_quality": {"source": "event", "column": "paper_quality"},
+    "bad_voltage": {"source": "event", "column": "bad_voltage"},
+    "bad_emg": {"source": "event", "column": "bad_emg"},
+    "source_trial_start_sample": {"source": "event", "column": "source_trial_start_sample"},
+    "source_trial_stop_sample": {"source": "event", "column": "source_trial_stop_sample"}
+  }
+}

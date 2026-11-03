@@ -116,19 +116,90 @@ selected-interval extraction does not remove that verification cost. Repeat
 `--case-id` with IDs copied from the plan to extract a subset. All selected cases
 here come from one recording, so subsetting cases still verifies that whole BDF.
 
-The output directory contains raw `X.npy`, `y.npy`, `cases.json` and
-`metadata.json`. Arrays use `(case, channel, time)` order and MNE-decoded volts;
+The output directory contains raw `X.npy`, `y.npy`, `cases.json`,
+`exclusions.json` and `metadata.json`. Arrays use `(case, channel, time)` order and MNE-decoded volts;
 source files are unchanged. Every command requires a fresh output path. These
 outputs are case-construction artifacts, not a completed experiment or resumable
 training run. Reinspect and replan when changing source files or updating an
 earlier version of this example's catalogue. Saved plans include implementation
 identities.
 
+## Optional: apply the original source-quality flags
+
+The separate `quality` command creates a quality-aware catalogue from the same
+pinned BIDS inputs plus `sourcedata/s01.mat` for subject 1, or the matching
+`sNN.mat` for another person. Obtain that selected original file separately and
+retain its manifest entry. No MATLAB installation is needed; SciPy reads the file.
+
+This is a deliberately more expensive preparation stage. It verifies the MAT
+file's complete SHA256, then decodes its `eeg` structure, including source signal
+arrays, to check the original trial layout and quality arrays. It may consume
+hundreds of megabytes of RAM. It is not the header-only `inspect` operation.
+Planning from the resulting saved catalogue still reads no source recordings.
+
+The following choices reproduce the previously exercised quality interpretation:
+
+```bash
+python examples/cho2017_problem.py quality \
+  --dataset /data/nm000245 --manifest /data/cho2017-manifest.json \
+  --subject 1 --index-origin 1 --buffer-samples 500 --cohort paper \
+  --output /tmp/cho2017-quality-catalogue.json
+
+python examples/cho2017_problem.py plan \
+  --catalogue /tmp/cho2017-quality-catalogue.json \
+  --binding examples/problem_definitions/cho2017-quality.binding.json \
+  --output /tmp/cho2017-quality-plan.json
+
+python examples/cho2017_problem.py materialize \
+  --dataset /data/nm000245 --plan /tmp/cho2017-quality-plan.json \
+  --output /tmp/cho2017-quality-cases
+```
+
+All three quality options are required. `--index-origin 1` interprets the source's
+class-local bad-trial indices as one-based. `--buffer-samples 500` declares the
+export's gap between the left and right class blocks. `--cohort paper` excludes
+subjects 29 and 34 under the published paper-cohort choice; `--cohort all` is an
+explicit alternative that does not apply those two person exclusions. Merely
+choosing a different origin/buffer does not guarantee an equivalent interpretation.
+
+The join checks every original cue against the exported class, numeric code,
+onset and sample coordinate. Equal counts alone are insufficient. Missing,
+nonfinite, fractional, repeated or out-of-range quality indices block the join;
+missing fields are never treated as empty flag arrays. A trial is excluded when
+it is flagged in either its class-local voltage or MI/EMG array. The original
+flag detector is not rerun or independently validated, and **unflagged does not
+certify artifact-free EEG**.
+
+Rows retain the published table IDs and gain an original class-local trial ID,
+0/1 flag witnesses, source-trial package bounds and explicit inclusion/exclusion
+reasons. The quality binding uses those original trial IDs and recording-scoped
+trial groups. It does not pretend to recover interleaved acquisition chronology.
+The catalogue records the MAT checksum, join implementation hash and all policy
+choices. Materialization rechecks that saved MAT snapshot and full checksum,
+alongside the BDF and sidecars, before decoding selected BDF intervals. Keep the
+original MAT locally available for that verification; it is hashed again, not
+decoded again. Source files and flags are never rewritten.
+
+For the two exercised people this produces 200 eligible cases for subject 1 and
+199 for subject 2, excluding subject 2's `left_hand:81`: **399 total**. Running
+plain `inspect` instead still produces **400 unfiltered cases** across those two
+people. These counts describe two engineering examples, not the complete cohort.
+Both variants use the same explicitly authored channels/epoch and produce raw
+cases only; neither adds preprocessing, model fitting, scores or paper-protocol
+reproduction. The saved plan and `exclusions.json` retain rejected trials.
+
+Another case builder may use different case-ID strings for these same trials.
+When replaying an earlier run, verify a one-to-one mapping using recording and
+original trial identity, labels, groups and bounds, then retain that mapping
+alongside the actual assignments. Do not rewrite completed run records or infer
+identity from matching row numbers alone.
+
 ## Eligibility and evaluation remain explicit
 
-This first walkthrough includes **all published events**. The exported event
+The default `inspect` walkthrough includes **all published events**. The exported event
 tables contain no original MATLAB bad-trial annotations, and the script does
-not fetch or interpret those source arrays. It records that eligibility policy
+not fetch or interpret those source arrays unless the explicit `quality` command
+is chosen. It records that eligibility policy
 in the catalogue and output metadata. A case being included does not mean that
 its EEG is artifact-free. Published cohort exclusions are not applied either.
 
