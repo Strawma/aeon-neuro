@@ -1,5 +1,9 @@
 # Define large-dataset problems before fetching signals
 
+For a local recording and authored JSON files, follow the
+[Cho2017 walkthrough](cho2017-problem.md). It keeps one-time header inspection,
+saved-metadata planning and explicit signal loading separate.
+
 A problem definition should not require downloading a complete signal archive.
 Use three explicit stages with the same [definition and binding vocabulary](problem-loading.md):
 

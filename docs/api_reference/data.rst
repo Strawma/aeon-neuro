@@ -12,6 +12,7 @@ Usage
    ../classification-problems
    ../problem-loading
    ../problem-planning
+   ../cho2017-problem
 
 Classification case construction
 --------------------------------

@@ -1,0 +1,9 @@
+{
+  "format_version": 1,
+  "id": "cho2017-central-imagery",
+  "version": "1",
+  "question": "Classify left versus right hand imagery from C3, Cz and C4 after the cue.",
+  "class_labels": ["left_hand", "right_hand"],
+  "channels": ["C3", "Cz", "C4"],
+  "segmentation": {"mode": "event_epochs", "tmin": 0.5, "tmax": 2.5}
+}

@@ -1,0 +1,16 @@
+{
+  "format_version": 1,
+  "problem": {"id": "cho2017-central-imagery", "version": "1"},
+  "target": {
+    "source": "event",
+    "column": "trial_type",
+    "mapping": {"left_hand": "left_hand", "right_hand": "right_hand"}
+  },
+  "group": {"source": "event", "column": "event_id"},
+  "events": {"onset": "onset", "id": "event_id"},
+  "case_fields": {
+    "participant_id": {"source": "recording", "column": "subject"},
+    "session": {"source": "recording", "column": "session"},
+    "trial_id": {"source": "event", "column": "event_id"}
+  }
+}

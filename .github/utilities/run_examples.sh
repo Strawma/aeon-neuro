@@ -3,6 +3,9 @@
 # Script to run all example notebooks.
 set -euxo pipefail
 
+# Exercise the real-data walkthrough with generated BDFs, without network inputs.
+python -m pytest -q examples/tests/test_cho2017_problem.py
+
 CMD="jupyter nbconvert --to notebook --inplace --execute --ExecutePreprocessor.timeout=600"
 
 excluded=()

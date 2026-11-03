@@ -1,5 +1,11 @@
 # Examples
 
+`cho2017_problem.py` uses authored problem/binding JSON on a local Cho2017
+recording. It separately inspects source metadata, plans cases from the saved
+catalogue, and verifies/loads selected raw intervals. See the
+[Cho2017 walkthrough](../docs/cho2017-problem.md) for the pinned inputs, commands
+and explicit unfiltered-event eligibility policy. No data is bundled or downloaded.
+
 `metadata_first_problem.py` plans a catalogue declaring over 128 GiB of source
 files without those files existing. A separate tiny generated fixture shows an
 empty training cache, explicit selected-recording acquisition, interval extraction
