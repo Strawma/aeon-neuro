@@ -1,5 +1,11 @@
 # Classification problems on loaded recordings
 
+For a local BIDS EDF/BDF folder, `inspect_bids_eeg` returns source metadata,
+original event rows and actionable diagnostics without loading signal arrays.
+`open_bids_eeg_recording` connects selected local sources to deferred
+materialization. See the [BIDS input guide](../../docs/bids-problem-input.md) for
+the supported boundary, unknown facts and content-verification choices.
+
 For large datasets, use `resolve_classification_problem` without signals,
 `plan_classification_problem` over a small metadata catalogue, then explicitly
 call `materialize_classification_problem` to open selected sources for training.

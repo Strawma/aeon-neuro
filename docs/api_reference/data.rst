@@ -3,6 +3,13 @@
 Data
 ====
 
+OpenNeuro fetching and preparation
+---------------------------------
+
+.. autofunction:: aeon_neuro.datasets.fetch_openneuro_dataset
+
+.. autoexception:: aeon_neuro.datasets.BIDSPreparationError
+
 Usage
 -----
 
@@ -13,10 +20,15 @@ Usage
    ../problem-format
    ../problem-loading
    ../problem-planning
+   ../bids-problem-input
    ../cho2017-problem
 
 Classification case construction
 --------------------------------
+
+.. autofunction:: aeon_neuro.datasets.inspect_bids_eeg
+
+.. autofunction:: aeon_neuro.datasets.open_bids_eeg_recording
 
 .. autofunction:: aeon_neuro.datasets.load_classification_problem
 
