@@ -89,3 +89,7 @@ preprocessing performed before case construction.
 The returned assignment snapshot is an inspection record, not a persistent
 certificate. Revalidate against the current dataset before fitting or reusing
 assignments after any changes.
+
+For explicit within-session, held-out-person and held-out-session fold planning,
+see [evaluation profiles](evaluation-profiles.md). Existing problem constraints
+and original processing-support checks remain mandatory.
