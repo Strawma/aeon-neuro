@@ -5,17 +5,17 @@ This example uses NEMAR nm000245 v1.0.2 and never downloads data.
 """
 
 import argparse
-import csv
 import hashlib
 import json
 import logging
 from pathlib import Path
 
-import mne
 import numpy as np
 
 from aeon_neuro.datasets import (
+    inspect_bids_eeg,
     materialize_classification_problem,
+    open_bids_eeg_recording,
     plan_classification_problem,
 )
 
@@ -31,12 +31,11 @@ def _hash(path):
     return digest.hexdigest()
 
 
-def _rows(path):
-    with path.open(encoding="utf-8-sig", newline="") as stream:
-        return list(csv.DictReader(stream, delimiter="\t"))
-
-
 def _verified_metadata(root, name, entries):
+    if name not in entries:
+        raise ValueError(
+            f"Inspected metadata is absent from the release manifest: {name}"
+        )
     path, entry = root / name, entries[name]
     content = path.read_bytes()
     if entry["checksum_algorithm"] == "git":
@@ -51,7 +50,7 @@ def _verified_metadata(root, name, entries):
 
 
 def inspect_recording(root, manifest, subject):
-    """Read a local BDF header and verified sidecars into a portable catalogue.
+    """Pin the release and use the shared BIDS inspector for source facts.
 
     This explicit inspection opens the BDF header without decoding its samples.
     Its expected content hash comes from the supplied release manifest; full
@@ -59,9 +58,14 @@ def inspect_recording(root, manifest, subject):
     """
     if type(subject) is not int or not 1 <= subject <= 52:
         raise ValueError("Use a Cho2017 subject number from 1 to 52")
-    entries = {item["path"]: item for item in json.loads(manifest.read_text())}
+    root = root.resolve()
+    entries = {
+        item["path"]: item for item in json.loads(manifest.read_text(encoding="utf-8"))
+    }
     description = json.loads(
-        _verified_metadata(root, "dataset_description.json", entries).read_text()
+        _verified_metadata(root, "dataset_description.json", entries).read_text(
+            encoding="utf-8-sig"
+        )
     )
     if (
         description.get("DatasetDOI") != "10.82901/nemar.nm000245"
@@ -69,46 +73,50 @@ def inspect_recording(root, manifest, subject):
     ):
         raise ValueError("This example requires NEMAR nm000245 v1.0.2")
     stem = f"sub-{subject}/ses-0/eeg/sub-{subject}_ses-0_task-imagery_run-0"
-    channels = _rows(_verified_metadata(root, stem + "_channels.tsv", entries))
-    events = _rows(_verified_metadata(root, stem + "_events.tsv", entries))
-    sidecar = json.loads(
-        _verified_metadata(root, stem + "_eeg.json", entries).read_text()
-    )
+    for suffix in ("_channels.tsv", "_events.tsv", "_eeg.json"):
+        _verified_metadata(root, stem + suffix, entries)
     recording_id = stem + "_eeg.bdf"
     signal = entries[recording_id]
     if signal["checksum_algorithm"] != "sha256":
         raise ValueError("Expected a SHA256 signal entry in the release manifest")
-    if (root / recording_id).stat().st_size != signal["size"]:
+    report = inspect_bids_eeg(
+        root, subjects=[str(subject)], sessions=["0"], tasks=["imagery"], runs=["0"]
+    )
+    if not report["ready"]:
+        errors = [
+            f"{issue['code']}: {issue['message']}"
+            for issue in report["issues"]
+            if issue["severity"] == "error"
+        ]
+        raise ValueError("BIDS inspection blocked: " + "; ".join(errors))
+    if report["source_ids"] != [recording_id]:
+        raise ValueError("Expected exactly the selected Cho2017 BDF recording")
+    recording = report["recordings"][0]
+    files = recording["bids_source"]["files"]
+    if files[recording_id]["size"] != signal["size"]:
         raise ValueError("Signal size differs from the release manifest")
-    with mne.io.read_raw_bdf(root / recording_id, preload=False, verbose=False) as raw:
-        if (
-            raw.ch_names != [row["name"] for row in channels]
-            or any(row["type"] != "EEG" for row in channels)
-            or raw.info["sfreq"] != sidecar["SamplingFrequency"]
-        ):
-            raise ValueError("BDF header and BIDS channel/rate metadata disagree")
-        recording = {
-            "recording_id": recording_id,
-            "subject": f"sub-{subject}",
-            "session": "0",
-            "channel_names": list(raw.ch_names),
-            "sampling_frequency": float(raw.info["sfreq"]),
-            "n_samples": int(raw.n_times),
-            "first_samp": int(raw.first_samp),
-            "units": "V",
-            "release": "NEMAR nm000245 v1.0.2",
-            "expected_sha256": signal["checksum"],
-            "source_size_bytes": signal["size"],
-            "eligibility_policy": ELIGIBILITY,
-            "conversion": description.get("GeneratedBy", []),
-        }
-    for index, row in enumerate(events):
-        if float(row["onset"]) * recording["sampling_frequency"] != int(row["sample"]):
-            raise ValueError("Event onset and sample columns disagree")
-        # These IDs identify published table rows, not original trial chronology.
-        # Preserve the source columns so that this distinction remains inspectable.
-        row.update(recording_id=recording_id, event_id=f"events-row-{index}")
-    return {"recordings": [recording], "events": events}
+    # Include inherited sidecars and participant data actually used by the
+    # inspector, not only the four files named in the minimal example layout.
+    for name, snapshot in files.items():
+        if name != recording_id:
+            path = _verified_metadata(root, name, entries)
+            if _hash(path) != snapshot["sha256"]:
+                raise ValueError(f"Metadata changed during inspection: {name}")
+    if any(row.get("type") != "EEG" for row in recording["channel_metadata"]):
+        raise ValueError("The Cho2017 example expects EEG-only channels")
+    recording.update(
+        units="V",
+        release="NEMAR nm000245 v1.0.2",
+        expected_sha256=signal["checksum"],
+        source_size_bytes=signal["size"],
+        eligibility_policy=ELIGIBILITY,
+    )
+    for row in report["events"]:
+        # Retain this example's published row IDs alongside the adapter IDs.
+        # Neither ID recovers original acquisition chronology or trial quality.
+        row["event_id"] = f"events-row-{row['bids_event_row']}"
+    report["release_manifest_sha256"] = _hash(manifest)
+    return report
 
 
 def make_plan(catalogue, problem, binding):
@@ -120,19 +128,11 @@ def make_plan(catalogue, problem, binding):
 
 def load_cases(root, plan, case_ids=None):
     """Verify the selected local source and materialize its planned raw samples."""
-
-    def open_recording(descriptor):
-        path = (root / descriptor["recording_id"]).resolve()
-        if not path.is_relative_to(root.resolve()):
-            raise ValueError("Recording path must stay inside the local dataset")
-        if (
-            path.stat().st_size != descriptor["source_size_bytes"]
-            or _hash(path) != descriptor["expected_sha256"]
-        ):
-            raise ValueError("Signal differs from the supplied release manifest")
-        return mne.io.read_raw_bdf(path, preload=False, verbose=False)
-
-    return materialize_classification_problem(plan, open_recording, case_ids=case_ids)
+    return materialize_classification_problem(
+        plan,
+        lambda descriptor: open_bids_eeg_recording(root, descriptor),
+        case_ids=case_ids,
+    )
 
 
 def _save(path, value):
@@ -175,13 +175,17 @@ def main():
         )
     elif args.command == "plan":
         plan = make_plan(
-            json.loads(args.catalogue.read_text()), args.problem, args.binding
+            json.loads(args.catalogue.read_text(encoding="utf-8")),
+            args.problem,
+            args.binding,
         )
         _save(args.output, plan)
         logging.info("Planned %s cases; no signal source opened", len(plan["cases"]))
     else:
         dataset = load_cases(
-            args.dataset, json.loads(args.plan.read_text()), args.case_id
+            args.dataset,
+            json.loads(args.plan.read_text(encoding="utf-8")),
+            args.case_id,
         )
         args.output.mkdir()
         np.save(args.output / "X.npy", dataset.X, allow_pickle=False)

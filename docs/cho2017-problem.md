@@ -3,6 +3,8 @@
 This walkthrough uses the [problem/binding format](problem-loading.md) to turn
 one local recording into labelled, traceable cases. It illustrates three steps:
 inspect a source once, plan from the saved metadata, then explicitly load cases.
+Source inspection and opening use the shared [local BIDS adapter](bids-problem-input.md);
+the example adds release-manifest verification and its explicit dataset binding.
 It does not download data or fit a model.
 
 The example uses the **Cho2017** left/right hand imagery dataset, distributed as
@@ -36,8 +38,10 @@ These are explicit example choices; the recording itself does not select them.
 `cho2017.binding.json` maps the physical dataset columns to those choices:
 `trial_type` supplies the target, `onset` supplies cue seconds, and explicit
 table-row IDs identify cases and trials. Participant/session identities come
-from the inspected recording descriptor. The script prepares this descriptor
-and the event rows; the reusable loader interprets the two authored documents.
+from the adapter's `participant_id` and `session` fields. The example retains its
+`events-row-N` aliases alongside the adapter's table-row IDs; neither is an
+original acquisition-trial identity. The reusable loader interprets the two
+authored documents.
 Changing the epoch or channel list belongs in the problem JSON. Mapping another
 dataset's column names or codes belongs in a new binding.
 
@@ -57,8 +61,11 @@ sub-1/ses-0/eeg/sub-1_ses-0_task-imagery_run-0_events.tsv
 Also save the small [release manifest](https://data.nemar.org/nm000245/v1.0.2/manifest.json)
 locally, for example as `/data/cho2017-manifest.json`. The script trusts that
 supplied manifest as the expected release identity. It verifies the small metadata
-files, checks the BDF size and reads its header with `preload=False` to learn the
-exact sample count, rate and channel order. It does not decode or hash the full
+files, then calls `inspect_bids_eeg` for the selected subject/session/task/run.
+The adapter reads a lazy header for the exact sample count, rate and channel order.
+Every additional metadata file it consumes, including inherited EEG JSON and
+optional participant data, must also match the manifest. It does not decode or
+hash the full
 signal during this inspection. Header inspection requires the local BDF; this
 step is not a remote metadata discovery implementation.
 
@@ -68,7 +75,9 @@ python examples/cho2017_problem.py inspect \
   --subject 1 --output /tmp/cho2017-catalogue.json
 ```
 
-The catalogue contains source descriptors and original event columns, plus
+The catalogue retains the adapter's `ready` status, warnings, metadata origins
+and source snapshots. Blocking diagnostics stop inspection with their code and
+message. It contains source descriptors and original event columns, plus
 stable IDs for rows of the supplied event table. Those IDs are not recovered
 original acquisition-trial IDs. The manifest's expected BDF checksum is retained
 without being treated as already verified.
@@ -100,7 +109,8 @@ python examples/cho2017_problem.py materialize \
 ```
 
 The source opener checks the BDF's complete SHA256 against the expected manifest
-entry, opens it lazily and lets `materialize_classification_problem` read the
+entry through `open_bids_eeg_recording`, checks saved metadata snapshots and the
+decoded header, then lets `materialize_classification_problem` read the
 planned intervals and close the handle. Full-file hashing reads all source bytes;
 selected-interval extraction does not remove that verification cost. Repeat
 `--case-id` with IDs copied from the plan to extract a subset. All selected cases
@@ -110,7 +120,9 @@ The output directory contains raw `X.npy`, `y.npy`, `cases.json` and
 `metadata.json`. Arrays use `(case, channel, time)` order and MNE-decoded volts;
 source files are unchanged. Every command requires a fresh output path. These
 outputs are case-construction artifacts, not a completed experiment or resumable
-training run.
+training run. Reinspect and replan when changing source files or updating an
+earlier version of this example's catalogue. Saved plans include implementation
+identities.
 
 ## Eligibility and evaluation remain explicit
 

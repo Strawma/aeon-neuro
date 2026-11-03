@@ -9,7 +9,7 @@
   "group": {"source": "event", "column": "event_id"},
   "events": {"onset": "onset", "id": "event_id"},
   "case_fields": {
-    "participant_id": {"source": "recording", "column": "subject"},
+    "participant_id": {"source": "recording", "column": "participant_id"},
     "session": {"source": "recording", "column": "session"},
     "trial_id": {"source": "event", "column": "event_id"}
   }

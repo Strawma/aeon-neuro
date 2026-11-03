@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 import edfio
@@ -35,7 +36,8 @@ def local_recording(tmp_path):
     Path(str(stem) + "_eeg.json").write_text('{"SamplingFrequency": 16}')
     Path(str(stem) + "_events.tsv").write_text(
         "\ufeffonset\tduration\ttrial_type\tvalue\tsample\n"
-        "1\t3\tleft_hand\t1\t16\n4\t3\tright_hand\t2\t64\n"
+        "1\t3\tleft_hand\t1\t16\n4\t3\tright_hand\t2\t64\n",
+        encoding="utf-8",
     )
     values = np.random.default_rng(42).normal(size=(3, 128))
     signal = Path(str(stem) + "_eeg.bdf")
@@ -75,6 +77,13 @@ def test_plan_needs_no_signal_source(local_recording, monkeypatch):
     """A saved catalogue remains usable when the recording is unavailable."""
     root, manifest, signal = local_recording
     catalogue = example.inspect_recording(root, manifest, 1)
+    assert catalogue["ready"]
+    assert catalogue["recordings"][0]["participant_id"] == "sub-1"
+    assert {issue["code"] for issue in catalogue["issues"]} >= {
+        "participants_missing",
+        "quality_unreviewed",
+        "content_unverified",
+    }
     signal.unlink()
 
     def unexpected_access(*args, **kwargs):
@@ -89,12 +98,20 @@ def test_plan_needs_no_signal_source(local_recording, monkeypatch):
     assert [row["start_sample"] for row in plan["cases"]] == [24, 72]
 
 
-def test_local_cases_match_bdf_without_source_changes(local_recording):
+def test_local_cases_match_bdf_without_source_changes(local_recording, monkeypatch):
     """The authored intervals and selected IDs reach exact decoded samples."""
     root, manifest, signal = local_recording
     catalogue = example.inspect_recording(root, manifest, 1)
     plan = example.make_plan(catalogue, PROBLEM, BINDING)
     before = example._hash(signal)
+    opened = []
+    original = example.open_bids_eeg_recording
+
+    def watched(root, descriptor):
+        opened.append(descriptor["recording_id"])
+        return original(root, descriptor)
+
+    monkeypatch.setattr(example, "open_bids_eeg_recording", watched)
     dataset = example.load_cases(root, plan)
     with mne.io.read_raw_bdf(signal, preload=False, verbose=False) as raw:
         for row, values in zip(dataset.cases, dataset.X):
@@ -109,6 +126,7 @@ def test_local_cases_match_bdf_without_source_changes(local_recording):
     chosen = plan["cases"][-1]["case_id"]
     subset = example.load_cases(root, plan, [chosen])
     np.testing.assert_array_equal(subset.X, dataset.X[-1:])
+    assert opened == [catalogue["source_ids"][0]] * 2
     assert example._hash(signal) == before
 
 
@@ -126,14 +144,77 @@ def test_changed_inputs_fail_before_signal_open(
 
     monkeypatch.setattr(mne.io, "read_raw_bdf", unexpected_open)
     if corrupt_signal:
+        stat = signal.stat()
         with signal.open("r+b") as stream:
             stream.write(b"X")
-        with pytest.raises(ValueError, match="Signal differs"):
+        # Unchanged size/time must still fail the trusted manifest checksum.
+        os.utime(signal, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        with pytest.raises(ValueError, match="Signal checksum differs"):
             example.load_cases(root, plan)
     else:
         signal.with_suffix(".json").write_text("{}")
         with pytest.raises(ValueError, match="Metadata differs"):
             example.inspect_recording(root, manifest, 1)
+
+
+def test_changed_metadata_after_planning_blocks_materialization(
+    local_recording, monkeypatch
+):
+    """The shared opener verifies the saved sidecars before opening signals."""
+    root, manifest, signal = local_recording
+    catalogue = example.inspect_recording(root, manifest, 1)
+    plan = example.make_plan(catalogue, PROBLEM, BINDING)
+    signal.with_suffix(".json").write_text("{}")
+
+    def unexpected_open(*args, **kwargs):
+        raise AssertionError("Changed metadata reached the decoder")
+
+    monkeypatch.setattr(mne.io, "read_raw_bdf", unexpected_open)
+    with pytest.raises(ValueError, match="Inspected source changed"):
+        example.load_cases(root, plan)
+
+
+@pytest.mark.parametrize("in_manifest", [False, True])
+def test_additional_inspected_metadata_needs_release_verification(
+    local_recording, in_manifest
+):
+    """Optional source facts cannot silently bypass the declared release pin."""
+    root, manifest, _ = local_recording
+    participants = root / "participants.tsv"
+    participants.write_text("participant_id\tcohort\nsub-1\tcontrol\n")
+    if in_manifest:
+        entries = json.loads(manifest.read_text())
+        entries.append(
+            {
+                "path": "participants.tsv",
+                "size": participants.stat().st_size,
+                "checksum_algorithm": "sha256",
+                "checksum": hashlib.sha256(participants.read_bytes()).hexdigest(),
+            }
+        )
+        manifest.write_text(json.dumps(entries))
+        catalogue = example.inspect_recording(root, manifest, 1)
+        assert catalogue["recordings"][0]["participant.cohort"] == "control"
+    else:
+        with pytest.raises(ValueError, match="absent from the release manifest"):
+            example.inspect_recording(root, manifest, 1)
+
+
+def test_adapter_blockers_keep_their_diagnostic_message(local_recording):
+    """A release-consistent sidecar can still contradict the recording header."""
+    root, manifest, signal = local_recording
+    sidecar = signal.with_suffix(".json")
+    sidecar.write_text('{"SamplingFrequency": 32}')
+    entries = json.loads(manifest.read_text())
+    entry = next(row for row in entries if row["path"].endswith("_eeg.json"))
+    entry.update(
+        size=sidecar.stat().st_size,
+        checksum_algorithm="sha256",
+        checksum=hashlib.sha256(sidecar.read_bytes()).hexdigest(),
+    )
+    manifest.write_text(json.dumps(entries))
+    with pytest.raises(ValueError, match="inspection_failed:.*SamplingFrequency"):
+        example.inspect_recording(root, manifest, 1)
 
 
 def test_cli_saves_portable_plan_and_raw_outputs(
