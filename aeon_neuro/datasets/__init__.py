@@ -16,8 +16,11 @@ __all__ = [
     "resolve_classification_problem",
     "plan_classification_problem",
     "materialize_classification_problem",
+    "inspect_bids_eeg",
+    "open_bids_eeg_recording",
 ]
 
+from aeon_neuro.datasets._bids_input import inspect_bids_eeg, open_bids_eeg_recording
 from aeon_neuro.datasets._classification import (
     ClassificationDataset,
     build_classification_dataset,

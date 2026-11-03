@@ -13,9 +13,14 @@ Usage
    ../problem-format
    ../problem-loading
    ../problem-planning
+   ../bids-problem-input
 
 Classification case construction
 --------------------------------
+
+.. autofunction:: aeon_neuro.datasets.inspect_bids_eeg
+
+.. autofunction:: aeon_neuro.datasets.open_bids_eeg_recording
 
 .. autofunction:: aeon_neuro.datasets.load_classification_problem
 
