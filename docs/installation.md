@@ -134,6 +134,14 @@ The same warnings and information regarding the MacOS ARM processor,
 checking install versioning and `pyproject.toml` dependencies given in the previous
 section apply here as well.
 
+## Optional experiment results
+
+Install `pip install '.[tsml]'` from a source checkout for the experiment and
+serial benchmark APIs. The published tsml-eval backend requires Python 3.12+
+and aeon below 1.6; use an isolated environment. Evaluation and benchmark
+planning remain usable without this extra. See the
+[experiment guide](classification-experiments.md).
+
 ## Using a pip venv
 
 In order to avoid potential conflicts with other packages, we strongly recommended

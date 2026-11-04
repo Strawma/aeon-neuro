@@ -10,6 +10,7 @@ by package.
 
 api_reference/classification
 api_reference/data
+api_reference/experiments
 api_reference/data_scripts
 api_reference/examples
 api_reference/transformations

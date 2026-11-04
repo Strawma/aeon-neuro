@@ -50,6 +50,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+tsml = [
+    "tsml-eval>=0.7,<0.8",
+    "filelock>=3.16",
+]
 openneuro = [
     "openneuro-py>=2026.9.1",
 ]
