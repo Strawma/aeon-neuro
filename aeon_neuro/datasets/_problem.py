@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
+from aeon_neuro import __version__
 from aeon_neuro.datasets._classification import (
     _channels,
     _event_cases,
@@ -16,6 +17,7 @@ from aeon_neuro.datasets._classification import (
     _recordings,
     build_classification_dataset,
 )
+from aeon_neuro.datasets._dataset_info import EEGDatasetInfo
 
 
 def _unique_keys(pairs):
@@ -268,6 +270,78 @@ def load_classification_problem(X, metadata, problem, binding, *, events=None):
     cases, boundary = _problem_cases(info, problem, binding, events)
     dataset = build_classification_dataset(X, info, cases, on_out_of_bounds=boundary)
     dataset.metadata["problem"] = _configuration(problem, binding)
+    return dataset
+
+
+def make_classification_problem(X, info, problem, binding):
+    """Build a classification problem from loaded signals and shared source info.
+
+    Parameters
+    ----------
+    X : np.ndarray or list of np.ndarray
+        Loaded recordings aligned with ``info``, in (channel, sample) order
+        per recording. Complete source layouts must match; no signal files are
+        opened or preprocessing performed.
+    info : EEGDatasetInfo
+        Shared source metadata, events and reported history, usually returned
+        by ``load_bids_dataset`` or paired ``info.select``. Event epochs use
+        its events automatically; fixed windows use recording facts only.
+    problem : dict or path-like
+        Experimental version-1 definition accepted by
+        ``load_classification_problem``. A JSON filename is read explicitly.
+    binding : dict or path-like
+        Experimental version-1 binding with explicit target mappings and group
+        choices. Recording selectors name exact descriptor keys, including BIDS
+        entities and matched participant columns such as ``participant.group``.
+        Event selectors name original event columns. No class meaning is inferred.
+
+    Returns
+    -------
+    ClassificationDataset
+        The existing case-builder result with detached provenance under
+        ``metadata["provenance"]``: version, source report, reported history,
+        effective problem/binding with hashes, and construction implementation.
+        This route stores the problem configuration once inside provenance.
+        The older loader retains its separate ``metadata["problem"]`` contract.
+
+    Notes
+    -----
+    This experimental convenience reuses the existing binding and segmentation
+    rules. It does not reread BIDS sidecars or implement another event parser.
+    Original source facts and history scopes are preserved, including earlier
+    processing scopes broader than the selected recordings. Source/configuration
+    snapshots and caller-reported history do not certify unchanged signal bytes
+    or leakage-free processing. Layout checks cannot detect equal-shaped external
+    array swaps or value edits. A history note does not update derived layouts.
+    Validate actual evaluation assignments separately.
+    """
+    if not isinstance(info, EEGDatasetInfo):
+        raise ValueError("info must be an EEGDatasetInfo instance")
+    info.validate_layout(X)
+    problem, binding = _resolve(problem, binding)
+    # Keep one binding/segmentation authority, including exclusions and effective
+    # configuration hashes. The object supplies facts, not a second case engine.
+    dataset = load_classification_problem(
+        X,
+        info.metadata,
+        problem,
+        binding,
+        events=(
+            info.events if problem["segmentation"]["mode"] == "event_epochs" else None
+        ),
+    )
+    source = info.to_dict()
+    history = source.pop("history", [])
+    dataset.metadata["provenance"] = {
+        "version": 1,
+        "source": source,
+        "history": history,
+        "problem": dataset.metadata.pop("problem"),
+        "construction": {
+            "implementation": "aeon_neuro.datasets.make_classification_problem",
+            "version": __version__,
+        },
+    }
     return dataset
 
 

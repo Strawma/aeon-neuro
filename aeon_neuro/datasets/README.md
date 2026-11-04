@@ -7,6 +7,12 @@ See [loaded recordings and metadata](../../docs/bids-dataset-info.md) for memory
 costs, copy semantics, available facts and the existing problem-loader handoff.
 The legacy `load_bids_data` interface is unchanged.
 
+Use `make_classification_problem(X, info, problem, binding)` to build cases from
+the shared metadata object without passing event rows separately. Bindings keep
+class meanings and evaluation groups explicit. The result groups the source
+report, reported history and effective problem/binding under
+`dataset.metadata["provenance"]`. The same guide shows the object-based route.
+
 `info.with_history(...)` returns a detached view with a caller-reported processing
 record, including parameters, implementation/version, source IDs and declared
 fitting scope. History survives serialization and recording selection. This

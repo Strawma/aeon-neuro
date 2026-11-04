@@ -9,6 +9,12 @@ To define problems before signal files are downloaded, start with
 The definition and binding vocabulary below is shared by both routes; this page
 describes the eager convenience function for arrays already in memory.
 
+For BIDS recordings loaded with `load_bids_dataset`, use the
+[shared metadata object and in-memory builder](bids-dataset-info.md#make-a-classification-problem):
+`make_classification_problem(X, info, problem, binding)` supplies events from
+`info` and preserves source/history/problem provenance together. The plain-input
+route below remains available with its existing output contract.
+
 `load_classification_problem` adds a small experimental definition layer over
 the existing case builders. Start with recording arrays and aligned metadata,
 including the outputs of `load_bids_data`. Supply the choices that the recordings

@@ -90,23 +90,58 @@ arrays or same-shape value edits. Keep X and info together and use paired select
 this API does not fingerprint arrays on every operation. Source metadata inspection
 also does not certify unchanged signal content without a trusted content hash.
 
-## Use the existing problem loader
+## Make a classification problem
 
 Scientific labels and grouping remain explicit in the ordinary problem and
-dataset-binding documents. Once those choices are authored, pass the metadata
-through without another segmentation or label implementation:
+dataset-binding documents. Once those choices are authored, pass the shared
+metadata object to the experimental in-memory builder:
 
 ```python
-from aeon_neuro.datasets import load_classification_problem
+from aeon_neuro.datasets import make_classification_problem
 
-cases = load_classification_problem(
+cases = make_classification_problem(
     X_selected,
-    selected_info.metadata,
+    selected_info,
     "imagery.problem.json",
     "study.binding.json",
-    events=selected_info.events,
 )
 ```
+
+Event epochs take rows from `selected_info.events` automatically. Fixed windows
+use recording facts and do not pass those events to the case builder. The
+function reuses the existing problem/binding and case rules, including explicit
+exclusions and exact sample-grid validation. It does not reopen BIDS files.
+
+Binding sources remain `recording` and `event`. For a participant-level cohort,
+use a recording target column such as `participant.group`, with an explicit
+mapping from source groups to class names. For subject-level evaluation groups,
+bind the recording column `participant_id`. These literal keys come from the
+inspector's participant join; the dot is part of the key, not a path expression.
+Recording entity fields include `subject`, `session`, `task`, `acq` and `run`.
+An absent participant value or optional entity is not inferred.
+
+The result is the existing `ClassificationDataset`. Its
+`metadata["provenance"]` is one version-1 record with these sections:
+
+| Field | Contents |
+| --- | --- |
+| `version` | Integer provenance schema version, currently `1`. |
+| `source` | Selected version-2 source report, excluding its optional history extension, with original dataset facts, events and snapshots. |
+| `history` | Complete reported processing records, including earlier application scopes outside a later selection. |
+| `problem` | Effective problem/binding documents and their existing SHA256 configuration identities. |
+| `construction` | Builder implementation identifier and aeon-neuro version. |
+
+The configuration is stored once under `provenance.problem`. Source facts and
+processing accounts retain separate meanings within this record. None of these
+sections authenticates external array contents or establishes leakage-free
+processing. Output signals and metadata are detached from the inputs; the result
+container itself remains mutable.
+
+`load_classification_problem(X, metadata, problem, binding, events=...)` remains
+available for plain recording/event inputs, with its existing
+`metadata["problem"]` output. It does not automatically include dataset-level
+source facts or reported history. The new object route preserves those facts
+without introducing a second parsing or segmentation implementation.
 
 See the [problem format reference](problem-format.md) for supported choices and
 the [loaded-problem guide](problem-loading.md) for a complete example. This
@@ -159,10 +194,10 @@ list only when supplied or appended. Ordinary inspector reports are unchanged.
 restores both source facts and history. Loading source data does not claim any
 unreported preprocessing.
 
-Save this metadata snapshot alongside derived outputs. Passing `info.metadata`
-and `info.events` to the existing case APIs passes recording/event facts only;
-it does not automatically copy dataset-level history into a classification
-result or a `.ts` file.
+Save this metadata snapshot alongside derived outputs, or retain the combined
+provenance returned by `make_classification_problem`. Passing only `info.metadata`
+and `info.events` to the older case APIs does not copy dataset-level history.
+No `.ts` writer automatically includes the new provenance record.
 
 Paired selection preserves complete earlier records, including source identities
 outside the new subset. Narrowing those identities could conceal that processing

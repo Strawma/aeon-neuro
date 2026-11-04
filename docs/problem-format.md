@@ -1,7 +1,8 @@
 # Problem and binding format reference, version 1
 
 This reference defines the authored documents accepted by
-`load_classification_problem`. The [loading guide](problem-loading.md) shows how
+`load_classification_problem` and the object-based `make_classification_problem`.
+The [loading guide](problem-loading.md) shows how
 to use them with recording arrays. The format is experimental and is not a BIDS
 standard or a general experiment configuration language.
 
