@@ -5,7 +5,8 @@ import hashlib
 import json
 import re
 import warnings
-from pathlib import Path
+from copy import deepcopy
+from pathlib import Path, PurePosixPath
 
 import numpy as np
 from mne_bids import get_bids_path_from_fname
@@ -52,6 +53,81 @@ def _table(path):
     return fields, rows
 
 
+def _text(path):
+    return path.read_bytes().decode("utf-8-sig")
+
+
+def _json_object(path):
+    value = json.loads(_text(path))
+    if not isinstance(value, dict):
+        raise ValueError(f"JSON metadata must contain an object: {path.name}")
+    json.dumps(value, allow_nan=False)
+    return value
+
+
+def _metadata(root, path, files, reader):
+    name = path.relative_to(root).as_posix()
+    path = _path(root, name)
+    before = _snapshot(path, metadata=True)
+    value = reader(path)
+    # Bind the returned values to the same bytes as the saved snapshot. These
+    # checks detect changes during a read, without claiming a filesystem lock.
+    if _snapshot(path, metadata=True) != before:
+        raise ValueError(f"Metadata changed during inspection: {name}")
+    files[name] = before
+    return value
+
+
+def _dataset_info(root, paths, issues):
+    files = {}
+    result = dict(
+        description=None,
+        readme=None,
+        participants=None,
+        participants_json=None,
+        selected_participants=sorted({f"sub-{path.subject}" for path in paths}),
+        paths={},
+        files=files,
+    )
+    readmes = [
+        root / name
+        for name in ("README", "README.md", "README.rst", "README.txt")
+        if (root / name).exists()
+    ]
+    if len(readmes) > 1:
+        raise ValueError("Multiple dataset README files; keep one unambiguous source")
+    sources = {
+        "description": root / "dataset_description.json",
+        "readme": readmes[0] if readmes else None,
+        "participants": root / "participants.tsv",
+        "participants_json": root / "participants.json",
+    }
+    for key, path in sources.items():
+        result["paths"][key] = None
+        if path is None or not path.exists():
+            _issue(
+                issues, None, f"{key}_missing", f"Dataset {key} metadata is unavailable"
+            )
+            continue
+        reader = _json_object
+        if key == "participants":
+            reader = _table
+        elif key == "readme":
+            reader = _text
+        value = _metadata(root, path, files, reader)
+        if key == "participants":
+            columns, rows = value
+            if "participant_id" not in columns:
+                raise ValueError("participants.tsv needs participant_id")
+            identities = [row["participant_id"] for row in rows]
+            if len(identities) != len(set(identities)):
+                raise ValueError("Duplicate participant rows in participants.tsv")
+            value = dict(columns=columns, rows=rows)
+        result[key] = value
+        result["paths"][key] = path.relative_to(root).as_posix()
+    return result
+
+
 def _issue(issues, recording_id, code, message, severity="warning"):
     issues.append(
         dict(
@@ -74,34 +150,135 @@ def _header(raw):
     }
 
 
-def _sidecar(root, bids_path, suffix):
+def _sidecar(root, bids_path, suffix, extension=".tsv"):
     # MNE-BIDS uses the same error mode for absent and ambiguous sidecars.
     # Establish absence first, then retain its strict best-match resolution.
     directory = bids_path.fpath.parent
     while True:
-        for path in directory.glob(f"*{suffix}.tsv"):
+        for path in directory.glob(f"*{suffix}{extension}"):
             entities = (
                 {}
-                if path.name == f"{suffix}.tsv"
+                if path.name == f"{suffix}{extension}"
                 else get_bids_path_from_fname(path.name, check=False).entities
             )
             if all(
-                value is None or bids_path.entities.get(key) == value
+                value is None
+                or bids_path.entities.get(key) == value
+                or (
+                    key == "space"
+                    and bids_path.space is None
+                    and suffix in ("electrodes", "coordsystem")
+                )
                 for key, value in entities.items()
             ):
                 return bids_path.find_matching_sidecar(
-                    suffix=suffix, extension=".tsv", on_error="raise"
+                    suffix=suffix, extension=extension, on_error="raise"
                 )
         if directory == root:
             return None
         directory = directory.parent
 
 
+def _recording_sidecars(root, bids_path, descriptor, files, issues):
+    recording_id = descriptor["recording_id"]
+    descriptor.update(electrodes=None, coordsystem=None, scan=None)
+    paths = descriptor["sidecar_paths"]
+    electrode_path = _sidecar(root, bids_path, "electrodes")
+    geometry_path = bids_path
+    if electrode_path is not None:
+        space = get_bids_path_from_fname(electrode_path.name, check=False).space
+        # A geometry file can name a space absent from the raw recording name.
+        # Resolve its coordinate system in that same space, never another one.
+        geometry_path = bids_path.copy().update(space=space, check=False)
+    coordinate_path = _sidecar(root, geometry_path, "coordsystem", ".json")
+    # scans.tsv belongs to this subject/session, rather than inheriting a
+    # different session's acquisition rows through a generic sidecar search.
+    scan_path = (
+        bids_path.copy()
+        .update(
+            task=None,
+            acquisition=None,
+            run=None,
+            processing=None,
+            recording=None,
+            space=None,
+            split=None,
+            description=None,
+            datatype=None,
+            suffix="scans",
+            extension=".tsv",
+            check=False,
+        )
+        .fpath
+    )
+    for suffix, path in (
+        ("electrodes", electrode_path),
+        ("coordsystem", coordinate_path),
+        ("scans", scan_path if scan_path.exists() else None),
+    ):
+        paths[suffix] = None
+        if path is None:
+            _issue(
+                issues,
+                recording_id,
+                f"{suffix}_missing",
+                f"No applicable {suffix} metadata",
+            )
+            continue
+        paths[suffix] = path.relative_to(root).as_posix()
+        if suffix == "coordsystem":
+            descriptor["coordsystem"] = _metadata(root, path, files, _json_object)
+            continue
+        columns, rows = _metadata(root, path, files, _table)
+        if suffix == "electrodes":
+            if not {"name", "x", "y", "z"} <= set(columns):
+                raise ValueError("Electrode table needs name, x, y and z columns")
+            names = [row["name"] for row in rows]
+            if len(names) != len(set(names)):
+                raise ValueError("Duplicate electrode names")
+            descriptor["electrodes"] = dict(columns=columns, rows=rows)
+        else:
+            if "filename" not in columns:
+                raise ValueError("Scans table needs a filename column")
+            name = PurePosixPath(bids_path.fpath.relative_to(path.parent).as_posix())
+            matches = [
+                (i, row)
+                for i, row in enumerate(rows)
+                if PurePosixPath(row["filename"]) == name
+            ]
+            if len(matches) > 1:
+                raise ValueError("Duplicate scans rows for this recording")
+            if matches:
+                index, row = matches[0]
+                descriptor["scan"] = dict(row_index=index, row=row)
+            else:
+                _issue(
+                    issues,
+                    recording_id,
+                    "scan_row_missing",
+                    "No scans row for this recording",
+                )
+    if electrode_path is not None and (descriptor["coordsystem"] or {}).get(
+        "EEGCoordinateUnits"
+    ) in (None, "", "n/a"):
+        _issue(
+            issues,
+            recording_id,
+            "coordinate_units_missing",
+            "Electrode coordinate units are unknown; source values retained",
+        )
+
+
 def _events(rows, recording_id, sfreq, n_samples):
     events = []
     for index, original in enumerate(rows):
         row = dict(original)
-        reserved = {"recording_id", "bids_event_id", "bids_event_row"} & row.keys()
+        reserved = {
+            "recording_id",
+            "bids_event_id",
+            "bids_event_row",
+            "bids_onset_sample",
+        } & row.keys()
         if reserved:
             raise ValueError(
                 f"Event columns shadow adapter identities: {sorted(reserved)}"
@@ -130,12 +307,13 @@ def _events(rows, recording_id, sfreq, n_samples):
             recording_id=recording_id,
             bids_event_id=f"row-{index}",
             bids_event_row=index,
+            bids_onset_sample=sample,
         )
         events.append(row)
     return events
 
 
-def _inspect(root, bids_path, issues):
+def _inspect(root, bids_path, issues, dataset):
     recording_id = bids_path.fpath.relative_to(root).as_posix()
     if not bids_path.subject:
         raise ValueError("A recording needs an explicit BIDS subject identity")
@@ -147,7 +325,7 @@ def _inspect(root, bids_path, issues):
     signal = _path(root, recording_id)
     initial = _snapshot(signal)
     metadata, origins = _read_eeg_json(bids_path)
-    files = {recording_id: initial}
+    files = {**deepcopy(dataset["files"]), recording_id: initial}
 
     def remember(path):
         name = path.relative_to(root).as_posix()
@@ -166,27 +344,12 @@ def _inspect(root, bids_path, issues):
         "run": bids_path.run,
         "eeg_metadata": metadata,
         "metadata_origins": origins,
+        "sidecar_paths": {},
     }
-    description = root / "dataset_description.json"
-    if description.exists():
-        dataset_metadata = json.loads(description.read_text(encoding="utf-8-sig"))
-        if not isinstance(dataset_metadata, dict):
-            raise ValueError("dataset_description.json must contain an object")
-        json.dumps(dataset_metadata, allow_nan=False)
-        descriptor["dataset_metadata"] = dataset_metadata
-        remember(description)
-    else:
-        _issue(
-            issues,
-            recording_id,
-            "dataset_description_missing",
-            "Dataset attribution/conversion metadata is unavailable",
-        )
-    participants = root / "participants.tsv"
-    if participants.exists():
-        fields, rows = _table(participants)
-        if "participant_id" not in fields:
-            raise ValueError("participants.tsv needs participant_id")
+    if dataset["description"] is not None:
+        descriptor["dataset_metadata"] = deepcopy(dataset["description"])
+    if dataset["participants"] is not None:
+        rows = dataset["participants"]["rows"]
         matches = [
             row for row in rows if row["participant_id"] == descriptor["participant_id"]
         ]
@@ -205,18 +368,10 @@ def _inspect(root, bids_path, issues):
                 "participant_missing",
                 "No matching participant row",
             )
-        remember(participants)
-    else:
-        _issue(
-            issues,
-            recording_id,
-            "participants_missing",
-            "No participants.tsv; participant attributes remain unknown",
-        )
     channels = _sidecar(root, bids_path, "channels")
     channel_rows = []
     if channels is not None:
-        fields, channel_rows = _table(channels)
+        fields, channel_rows = _metadata(root, channels, files, _table)
         if "name" not in fields:
             raise ValueError("Channel table needs a name column")
         if not channel_rows:
@@ -228,7 +383,6 @@ def _inspect(root, bids_path, issues):
                 "channel_types_missing",
                 "Channel table has no type column; no roles are inferred",
             )
-        remember(channels)
     else:
         _issue(
             issues,
@@ -239,8 +393,7 @@ def _inspect(root, bids_path, issues):
     event_path = _sidecar(root, bids_path, "events")
     event_rows = []
     if event_path is not None:
-        _, event_rows = _table(event_path)
-        remember(event_path)
+        _, event_rows = _metadata(root, event_path, files, _table)
     else:
         _issue(
             issues,
@@ -248,6 +401,15 @@ def _inspect(root, bids_path, issues):
             "events_missing",
             "No event table; event-epoch problems remain unresolved",
         )
+    descriptor["sidecar_paths"].update(
+        channels=(
+            channels.relative_to(root).as_posix() if channels is not None else None
+        ),
+        events=(
+            event_path.relative_to(root).as_posix() if event_path is not None else None
+        ),
+    )
+    _recording_sidecars(root, bids_path, descriptor, files, issues)
     with load_eeg_to_mne(signal, preload=False, verbose=False) as raw:
         if raw.preload:
             raise ValueError("Source reader unexpectedly preloaded the recording")
@@ -339,14 +501,20 @@ def inspect_bids_eeg(
     Returns
     -------
     dict
-        Version-1 inspection report with ready, source_ids, recordings, events
-        and issues. Issues have severity, code, recording_id and message.
+        Version-2 inspection report with ready, source_ids, dataset, recordings,
+        events and issues. Dataset facts retain optional description/README,
+        the complete participant table/dictionary and selected participant IDs.
+        Issues have severity, code, recording_id and message.
         Any blocking error sets recordings/events to None, preventing a silently
         partial catalogue. Warnings preserve unknown facts and caller decisions.
         Successful descriptors retain header facts, EEG JSON field origins,
         original tables and local file snapshots. Participant attributes use
         literal flat keys such as participant.group. Events preserve columns
-        and add bids_event_id/bids_event_row, identifying published table rows.
+        and add bids_event_id/bids_event_row, identifying published table rows,
+        plus exact zero-based integer bids_onset_sample coordinates.
+        Recording descriptors retain optional electrodes/coordsystem sidecars,
+        a matching scans row and sidecar paths. TSV values stay strings; geometry
+        values and row order do not alter the decoded channel layout or units.
 
     Notes
     -----
@@ -374,22 +542,36 @@ def inspect_bids_eeg(
         issues = []
         _issue(issues, None, "selection_failed", exc, "error")
         return dict(
-            version=1,
+            version=2,
             ready=False,
             source_ids=[],
             issues=issues,
             recordings=None,
             events=None,
+            dataset=None,
         )
     paths = sorted(paths, key=lambda path: str(path.fpath))
-    issues, recordings, events, source_ids = [], [], [], []
+    issues, recordings, events = [], [], []
+    source_ids = [path.fpath.relative_to(root).as_posix() for path in paths]
+    try:
+        dataset = _dataset_info(root, paths, issues)
+    except (OSError, ValueError, RuntimeError) as exc:
+        _issue(issues, None, "dataset_metadata_failed", exc, "error")
+        return dict(
+            version=2,
+            ready=False,
+            source_ids=source_ids,
+            dataset=None,
+            recordings=None,
+            events=None,
+            issues=issues,
+        )
     for path in paths:
         recording_id = path.fpath.relative_to(root).as_posix()
-        source_ids.append(recording_id)
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             try:
-                descriptor, rows = _inspect(root, path, issues)
+                descriptor, rows = _inspect(root, path, issues, dataset)
                 recordings.append(descriptor)
                 events.extend(rows)
             except (OSError, ValueError, RuntimeError) as exc:
@@ -398,12 +580,13 @@ def inspect_bids_eeg(
             _issue(issues, recording_id, "reader_warning", warning.message)
     ready = not any(issue["severity"] == "error" for issue in issues)
     return dict(
-        version=1,
+        version=2,
         ready=ready,
         source_ids=source_ids,
         issues=issues,
         recordings=recordings if ready else None,
         events=events if ready else None,
+        dataset=dataset,
     )
 
 

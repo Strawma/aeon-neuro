@@ -2,6 +2,10 @@
 
 For a local BIDS EDF/BDF folder, `inspect_bids_eeg` returns source metadata,
 original event rows and actionable diagnostics without loading signal arrays.
+The version-2 report retains the dataset README/participant dictionary, full
+participant table, electrode/coordinate sidecars, matched scans rows and exact
+integer event sample coordinates. Consumed metadata files are pinned for later
+source opening; missing optional facts and ambiguous files remain explicit.
 `open_bids_eeg_recording` connects selected local sources to deferred
 materialization. See the [BIDS input guide](../../docs/bids-problem-input.md) for
 the supported boundary, unknown facts and content-verification choices.
