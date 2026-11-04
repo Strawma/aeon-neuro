@@ -153,7 +153,7 @@ A source adapter should:
 
 The materializer verifies decoded channel order, rate, sample count and an
 explicit `first_samp` if supplied, then requests only selected intervals and
-channel names with `get_data`. It checks returned shapes and finite samples,
+channel names with `get_data`. It checks returned shapes and finite real-numeric arrays,
 retains native values and closes every handle on success or error. A changed
 plan or implementation is rejected before invoking the adapter.
 

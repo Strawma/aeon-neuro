@@ -296,9 +296,15 @@ def materialize_classification_problem(plan, open_recording, *, case_ids=None):
                     stop=row["stop_sample"],
                 )
                 expected = (len(channels), row["stop_sample"] - row["start_sample"])
-                if values.shape != expected or not np.isfinite(values).all():
+                # Enforce the same real-numeric array contract as eager inputs.
+                if (
+                    not isinstance(values, np.ndarray)
+                    or values.shape != expected
+                    or values.dtype.kind not in "fiu"
+                    or not np.isfinite(values).all()
+                ):
                     raise ValueError(
-                        "Reader returned invalid or nonfinite case samples"
+                        "Reader returned invalid or nonfinite real case samples"
                     )
                 signals[row["row"]] = values.copy()
         finally:

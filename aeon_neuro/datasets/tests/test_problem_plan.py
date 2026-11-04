@@ -64,6 +64,14 @@ def make_opener(X, trace, monkeypatch, *, change=None):
                 result[0, 0] = np.nan
             elif change == "shape":
                 result = result[:, :-1]
+            elif change == "complex":
+                result = result.astype(complex)
+            elif change == "boolean":
+                result = result.astype(bool)
+            elif change == "object":
+                result = result.astype(object)
+            elif change == "sequence":
+                result = result.tolist()
             return result
 
         monkeypatch.setattr(raw, "get_data", get_data)
@@ -190,7 +198,20 @@ def test_altered_plan_is_rejected_before_source_access(sources, change):
         )
 
 
-@pytest.mark.parametrize("change", ["channels", "rate", "length", "nonfinite", "shape"])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "channels",
+        "rate",
+        "length",
+        "nonfinite",
+        "shape",
+        "complex",
+        "boolean",
+        "object",
+        "sequence",
+    ],
+)
 def test_reader_mismatches_and_bad_samples_close_the_source(
     sources, monkeypatch, change
 ):
