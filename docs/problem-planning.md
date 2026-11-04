@@ -74,8 +74,8 @@ fingerprint changes, retaining their authored definitions and source evidence.
 
 ## Eager and deferred provenance
 
-For the same shared input and authored documents, full materialization produces
-the same samples, case identities, labels, groups and exclusions as
+When the opener supplies the same recording signals as the eager route, full
+materialization produces the same samples, case identities, labels, groups and exclusions as
 `make_classification_problem(X, info, problem, binding)`. The combined
 `metadata["provenance"]` uses identical `source`, `history` and `problem` sections.
 Its `construction` identifies the actual eager or deferred entrypoint and package
@@ -90,6 +90,11 @@ only the recordings actually opened. Returned arrays and metadata are detached
 from the plan and input object.
 
 Plain-input materialization retains its separate `metadata["problem"]` contract.
+Reported history is metadata, not an executable preprocessing pipeline. The
+native BIDS opener returns source signals. If eager arrays were filtered or
+scaled externally, an explicit opener must reproduce that signal state for sample
+parity; the materializer neither applies nor verifies those reported operations.
+Layout-changing transformations still need a separately supported mapping.
 Neither route certifies arbitrary earlier processing or source content from a
 configuration hash. The explicit source adapter remains responsible for content
 verification. A saved plan is an inspection snapshot, not a signed certificate.
