@@ -7,6 +7,12 @@ See [loaded recordings and metadata](../../docs/bids-dataset-info.md) for memory
 costs, copy semantics, available facts and the existing problem-loader handoff.
 The legacy `load_bids_data` interface is unchanged.
 
+`info.with_history(...)` returns a detached view with a caller-reported processing
+record, including parameters, implementation/version, source IDs and declared
+fitting scope. History survives serialization and recording selection. This
+records an account of external work; it does not process signals, observe array
+changes or update source layouts. See the same guide for the record schema.
+
 For a local BIDS EDF/BDF folder, `inspect_bids_eeg` returns source metadata,
 original event rows and actionable diagnostics without loading signal arrays.
 The version-2 report retains the dataset README/participant dictionary, full

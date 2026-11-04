@@ -59,7 +59,8 @@ and the detached version-2 report returned by `info.to_dict()`.
 Changing a returned dictionary/list does not mutate the stored metadata. Source
 facts are not rewritten to describe arbitrary external array operations. For
 example, a source `EEGReference` remains an acquisition fact after a caller
-independently rereferences an array; processing-history helpers are separate work.
+independently rereferences an array. Use explicit history records to document
+processing without changing those source facts.
 
 ## Select signals and metadata together
 
@@ -109,5 +110,71 @@ cases = load_classification_problem(
 
 See the [problem format reference](problem-format.md) for supported choices and
 the [loaded-problem guide](problem-loading.md) for a complete example. This
-increment does not add automatic labels, evaluation groups, DataFrame views,
-processing history or companion-file source formats.
+increment does not add automatic labels, evaluation groups, DataFrame views
+or companion-file source formats.
+
+## Record reported processing
+
+After independently performing an operation, use `with_history` to describe it.
+The method returns a new metadata view; it does not mutate the parent or perform
+the operation itself. For example, record an explicit scale conversion:
+
+```python
+import numpy as np
+
+X_scaled = [recording * 1e6 for recording in X]
+scaled_info = info.with_history(
+    "scale",
+    {"factor": 1e6, "input_units": "V", "output_units": "uV"},
+    implementation="numpy.multiply",
+    version=np.__version__,
+    fit_scope="none",
+)
+print(scaled_info.history)
+```
+
+Supply the actual implementation version and effective parameters. Each record
+uses the following version-1 schema:
+
+| Field | Meaning |
+| --- | --- |
+| `version` | Record schema version, currently integer `1`. |
+| `step` | Nonempty caller-supplied operation name. |
+| `parameters` | Dictionary of effective parameters using portable JSON values. |
+| `implementation`, `implementation_version` | Caller-supplied implementation identifier and its version. |
+| `fit_scope` | Caller-supplied description of fitting inputs, `none` for an unfitted operation, or `unspecified` when omitted. |
+| `source_ids` | Recording source identities selected when the record was appended. |
+
+Parameters accept string-keyed dictionaries, lists, strings, finite floats,
+integers, bools and `None`. Convert NumPy values explicitly. Tuples, non-string
+keys, recursive structures and nonfinite numbers raise errors instead of changing
+meaning during serialization. Names and versions must be nonempty strings.
+Records do not add a wall-clock timestamp; callers may include one in parameters
+when needed. An implementation version is required on each record.
+
+`info.history` returns detached records in append order, initially an empty list.
+`to_dict()` preserves the version-2 source report, adding the optional `history`
+list only when supplied or appended. Ordinary inspector reports are unchanged.
+`EEGDatasetInfo(json.loads(json.dumps(scaled_info.to_dict())))` validates and
+restores both source facts and history. Loading source data does not claim any
+unreported preprocessing.
+
+Save this metadata snapshot alongside derived outputs. Passing `info.metadata`
+and `info.events` to the existing case APIs passes recording/event facts only;
+it does not automatically copy dataset-level history into a classification
+result or a `.ts` file.
+
+Paired selection preserves complete earlier records, including source identities
+outside the new subset. Narrowing those identities could conceal that processing
+used a larger population. A later record identifies only the sources selected
+at that later step. Empty selections preserve existing history but cannot append
+a new step. The log does not automatically record selection operations.
+
+History is a caller's account, not evidence that an operation occurred or that
+fitting avoided leakage. It does not fingerprint arrays, generate derived data
+identities or detect external mutation. Source channel units, reference, rate,
+event coordinates and file snapshots remain source facts. A crop or resampling
+record does not make the original metadata describe a changed signal layout;
+`validate_layout` continues to reject incompatible shapes. Processing helpers,
+derived-layout updates, automatic transformer tracking and `.ts` header formatting
+remain separate features.

@@ -1,6 +1,7 @@
 """Keep inspected BIDS source facts aligned with in-memory recordings."""
 
 from copy import deepcopy
+from math import isfinite
 
 import numpy as np
 
@@ -146,15 +147,19 @@ class EEGDatasetInfo:
     Parameters
     ----------
     report : dict
-        Ready version-2 report from ``inspect_bids_eeg``. Retains the complete
-        source participant table separately from the selected recording scope.
+        Ready version-2 report from ``inspect_bids_eeg`` or ``to_dict``. Retains
+        the complete source participant table separately from the selected
+        recording scope. An optional ``history`` list contains version-1
+        caller-reported processing records, validated on construction.
 
     Notes
     -----
     Construction copies metadata, validates source/event alignment and performs
     no signal reads. Use ``load_bids_dataset`` for verified source loading.
     Table views are portable dictionaries/rows rather than pandas objects.
-    Processing history and automatic target/group inference are not provided.
+    Processing records document caller-supplied claims, not observed array
+    operations. They do not update source facts or validate derived layouts.
+    Automatic target/group inference is not provided.
     """
 
     def __init__(self, report):
@@ -174,6 +179,7 @@ class EEGDatasetInfo:
                 f"The inspection report must be ready before loading: {messages}"
             )
         self._report = deepcopy(report)
+        _validate_history(self._report.get("history", []))
         try:
             entries = self._report["recordings"]
             if not isinstance(entries, list):
@@ -267,13 +273,74 @@ class EEGDatasetInfo:
         """Dict or None: Original participant-column dictionary."""
         return deepcopy(self._report["dataset"]["participants_json"])
 
+    @property
+    def history(self):
+        """Detached processing records in append order, empty when unreported."""
+        return deepcopy(self._report.get("history", []))
+
+    def with_history(
+        self, step, parameters, *, implementation, version, fit_scope="unspecified"
+    ):
+        """Return a detached metadata view with one reported processing step.
+
+        Parameters
+        ----------
+        step : str
+            Nonempty operation name, such as ``scale`` or ``filter``.
+        parameters : dict
+            Effective parameters using only portable JSON values: string-keyed
+            dictionaries, lists, strings, finite floats, integers, bools or None.
+        implementation : str
+            Nonempty qualified function, package or implementation identifier.
+        version : str
+            Nonempty version of that implementation, saved independently of the
+            record schema version. Supply an actual version, not an estimate.
+        fit_scope : str, default="unspecified"
+            Description of fitting inputs, or ``none`` for an unfitted operation.
+            The default explicitly leaves this unreported. No scope is inferred.
+
+        Returns
+        -------
+        EEGDatasetInfo
+            New view with the record appended for the currently selected source
+            IDs. The parent, its history and all source facts remain unchanged.
+
+        Notes
+        -----
+        This method records a caller's account; it neither performs processing
+        nor checks that arrays were processed as described. A crop/resampling
+        note does not make source layouts or events describe a derived array.
+        Selection retains earlier records and their original application scopes,
+        which may include sources no longer selected. Empty views cannot append
+        a step because there are no current sources to identify.
+        """
+        if not len(self):
+            raise ValueError("Cannot append processing history to an empty view")
+        record = {
+            "version": 1,
+            "step": step,
+            "parameters": parameters,
+            "implementation": implementation,
+            "implementation_version": version,
+            "fit_scope": fit_scope,
+            "source_ids": list(self.source_ids),
+        }
+        # Validate before copying so recursive/nonportable caller objects fail
+        # with the same error as malformed saved records.
+        _validate_history([record])
+        report = self.to_dict()
+        report["history"] = self.history + [record]
+        return EEGDatasetInfo(report)
+
     def to_dict(self):
-        """Return a detached version-2 inspection report for this scope.
+        """Return detached source metadata and optional reported history.
 
         Returns
         -------
         dict
-            Serializable metadata including original source snapshots.
+            Version-2 source report including original snapshots. A view with
+            reported steps also includes the optional ``history`` extension.
+            Pass this dictionary to ``EEGDatasetInfo`` to restore both.
         """
         return deepcopy(self._report)
 
@@ -334,6 +401,8 @@ class EEGDatasetInfo:
             else [X[i].copy() for i in indices]
         )
         report = self.to_dict()
+        # Retain complete earlier processing scopes: narrowing their source IDs
+        # could hide that an operation was fitted on a larger population.
         report["recordings"] = [report["recordings"][i] for i in indices]
         report["source_ids"] = [entry["recording_id"] for entry in report["recordings"]]
         ids = set(report["source_ids"])
@@ -347,6 +416,67 @@ class EEGDatasetInfo:
             {entry["participant_id"] for entry in report["recordings"]}
         )
         return selected, EEGDatasetInfo(report)
+
+
+def _validate_history(history):
+    if not isinstance(history, list):
+        raise ValueError("Processing history must be a list of version-1 records")
+    fields = {
+        "version",
+        "step",
+        "parameters",
+        "implementation",
+        "implementation_version",
+        "fit_scope",
+        "source_ids",
+    }
+    for record in history:
+        if (
+            not isinstance(record, dict)
+            or set(record) != fields
+            or type(record["version"]) is not int
+            or record["version"] != 1
+        ):
+            raise ValueError("Invalid version-1 processing history record")
+        for field in ("step", "implementation", "implementation_version", "fit_scope"):
+            if not isinstance(record[field], str) or not record[field].strip():
+                raise ValueError(f"Processing history {field} must be nonempty text")
+        ids = record["source_ids"]
+        if (
+            not isinstance(ids, list)
+            or not ids
+            or any(not isinstance(value, str) or not value.strip() for value in ids)
+            or len(set(ids)) != len(ids)
+        ):
+            raise ValueError(
+                "Processing history source_ids must be unique source names"
+            )
+        try:
+            if type(record["parameters"]) is not dict:
+                raise ValueError
+            _json_history_value(record["parameters"])
+        except (ValueError, RecursionError) as exc:
+            raise ValueError(
+                "Processing history parameters must be portable JSON"
+            ) from exc
+
+
+def _json_history_value(value):
+    # Reject tuple conversion, non-string keys and NumPy objects rather than
+    # silently changing a parameter's type during JSON serialization.
+    if value is None or type(value) in (str, int, bool):
+        return
+    if type(value) is float and isfinite(value):
+        return
+    if type(value) is list:
+        for item in value:
+            _json_history_value(item)
+        return
+    if type(value) is dict and all(type(key) is str for key in value):
+        for item in value.values():
+            _json_history_value(item)
+        return
+    raise ValueError("Nonportable processing parameter")
 
 
 def _selection(selector, count):
