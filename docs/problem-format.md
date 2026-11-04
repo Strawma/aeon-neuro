@@ -6,6 +6,11 @@ case. A **binding** connects that problem to explicit recording/event fields.
 outputs from `load_bids_data`. The version-1 format is experimental. It adds no
 dependencies and does not discover files, preprocess signals or choose a split.
 
+For BIDS sources loaded with `load_bids_dataset`, the experimental
+[object-based builder](bids-dataset-info.md#make-a-classification-problem)
+accepts the same authored documents as `make_classification_problem(X, info,
+problem, binding)`, supplying events and preserving source/history provenance.
+
 ## Complete event problem and binding
 
 This runnable example makes half-second post-cue cases from generated signals:

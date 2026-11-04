@@ -41,6 +41,8 @@ Classification case construction
 
 .. autofunction:: aeon_neuro.datasets.load_classification_problem
 
+.. autofunction:: aeon_neuro.datasets.make_classification_problem
+
 .. autoclass:: aeon_neuro.datasets.ClassificationDataset
 
 .. autofunction:: aeon_neuro.datasets.make_recording_cases

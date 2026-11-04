@@ -10,6 +10,11 @@ See the [source inspection guide](../../docs/bids-problem-input.md) and
 [loaded metadata guide](../../docs/bids-dataset-info.md). Both routes reuse the
 existing source reader and preserve the legacy `load_bids_data` interface.
 
+`make_classification_problem(X, info, problem, binding)` uses that shared object
+directly for event or recording targets. It retains explicit class/group choices
+and returns source, reported history and effective problem configuration together
+under `dataset.metadata["provenance"]`. The plain-input loader remains available.
+
 `load_classification_problem(recordings, metadata, problem, binding, events=...)`
 constructs the existing `ClassificationDataset` from explicit problem choices.
 Definitions and bindings can be dictionaries or JSON filenames. Fixed windows
