@@ -16,6 +16,9 @@ __all__ = [
     "validate_classification_split",
     "load_classification_problem",
     "make_classification_problem",
+    "resolve_classification_problem",
+    "plan_classification_problem",
+    "materialize_classification_problem",
     "inspect_bids_eeg",
     "open_bids_eeg_recording",
     "EEGDatasetInfo",
@@ -44,6 +47,11 @@ from aeon_neuro.datasets._openneuro import fetch_openneuro_dataset
 from aeon_neuro.datasets._problem import (
     load_classification_problem,
     make_classification_problem,
+)
+from aeon_neuro.datasets._problem_plan import (
+    materialize_classification_problem,
+    plan_classification_problem,
+    resolve_classification_problem,
 )
 from aeon_neuro.datasets._single_problem_loaders import (
     load_kdd_example,

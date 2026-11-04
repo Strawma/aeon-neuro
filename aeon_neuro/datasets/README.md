@@ -1,5 +1,11 @@
 # Classification problems on loaded recordings
 
+For metadata-only planning and selected signal loading, use
+`plan_classification_problem` followed by `materialize_classification_problem`.
+Both share the eager builder's case and binding rules. See the
+[planning guide](../../docs/problem-planning.md) for source-opening and memory
+boundaries; planning does not fetch or read signal arrays.
+
 `inspect_bids_eeg` reads local EDF/BDF headers and BIDS sidecars without loading
 signal arrays. `load_bids_dataset` loads those sources with `EEGDatasetInfo`,
 preserving dataset/participant facts, channel/event tables and source snapshots.

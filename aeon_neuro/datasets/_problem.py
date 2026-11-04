@@ -12,11 +12,11 @@ from aeon_neuro import __version__
 from aeon_neuro.datasets._classification import (
     _CASE_RESERVED_FIELDS,
     _channels,
+    _event_cases,
+    _fixed_length_cases,
     _identifier,
     _recordings,
     build_classification_dataset,
-    make_event_cases,
-    make_fixed_length_cases,
 )
 from aeon_neuro.datasets._dataset_info import EEGDatasetInfo
 
@@ -263,84 +263,9 @@ def load_classification_problem(X, metadata, problem, binding, *, events=None):
     """
     problem, binding = _resolve(problem, binding)
     _, info = _recordings(X, metadata)
-    lookup = {item["recording_id"]: item for item in info}
-    segment = problem["segmentation"]
-    if segment["mode"] == "fixed_windows":
-        if events is not None:
-            raise ValueError("events are only used by event_epochs segmentation")
-        # Map targets after enumeration so an explicitly unmapped recording can
-        # retain all of its excluded windows in the ordinary case table.
-        rows = make_fixed_length_cases(
-            X,
-            info,
-            labels=[
-                str(_identifier(_value(item, None, binding["target"]), "target value"))
-                for item in info
-            ],
-            groups=[
-                _identity(_value(item, None, binding["group"]), "group")
-                for item in info
-            ],
-            **{key: value for key, value in segment.items() if key != "mode"},
-        )
-        cases = [
-            _decorate(row, lookup[row["recording_id"]], None, problem, binding)
-            for row in rows
-        ]
-        boundary = "raise"
-    else:
-        if events is None or isinstance(events, (str, dict)):
-            raise ValueError("Event epochs require an iterable of event dictionaries")
-        prepared = []
-        for index, event in enumerate(events):
-            if not isinstance(event, dict):
-                raise ValueError("Each event must be a dictionary")
-            event = deepcopy(event)
-            recording_id = event.get("recording_id")
-            if not isinstance(recording_id, str) or recording_id not in lookup:
-                raise ValueError(f"Unknown event recording_id: {recording_id!r}")
-            item = lookup[recording_id]
-            event_id = _identity(
-                _value(
-                    item, event, {"source": "event", "column": binding["events"]["id"]}
-                ),
-                "event id",
-            )
-            onset = _value(
-                item, event, {"source": "event", "column": binding["events"]["onset"]}
-            )
-            if isinstance(onset, (bool, np.bool_)):
-                raise ValueError("Event onset must be finite seconds")
-            try:
-                onset = float(onset)
-            except (TypeError, ValueError, OverflowError) as exc:
-                raise ValueError("Event onset must be finite seconds") from exc
-            row = {
-                # A structured identity avoids delimiter and string/integer
-                # collisions across recording-local event identifiers.
-                "case_id": "event:" + json.dumps([recording_id, event_id]),
-                "recording_id": recording_id,
-                "event_id": event_id,
-                "onset": onset,
-                "source_event_row": index,
-                "source_event": event,
-            }
-            prepared.append(_decorate(row, item, event, problem, binding))
-        cases = make_event_cases(
-            X, info, prepared, tmin=segment["tmin"], tmax=segment["tmax"]
-        )
-        boundary = segment["on_out_of_bounds"]
+    cases, boundary = _problem_cases(info, problem, binding, events)
     dataset = build_classification_dataset(X, info, cases, on_out_of_bounds=boundary)
-    dataset.metadata["problem"] = {
-        "definition": problem,
-        "binding": binding,
-        **{
-            f"{name}_sha256": hashlib.sha256(
-                json.dumps(value, sort_keys=True, allow_nan=False).encode()
-            ).hexdigest()
-            for name, value in (("definition", problem), ("binding", binding))
-        },
-    }
+    dataset.metadata["problem"] = _configuration(problem, binding)
     return dataset
 
 
@@ -414,3 +339,84 @@ def make_classification_problem(X, info, problem, binding):
         },
     }
     return dataset
+
+
+def _problem_cases(info, problem, binding, events):
+    lookup = {item["recording_id"]: item for item in info}
+    segment = problem["segmentation"]
+    if segment["mode"] == "fixed_windows":
+        if events is not None:
+            raise ValueError("events are only used by event_epochs segmentation")
+        # Map targets after enumeration so an explicitly unmapped recording can
+        # retain all of its excluded windows in the ordinary case table.
+        rows = _fixed_length_cases(
+            info,
+            labels=[
+                str(_identifier(_value(item, None, binding["target"]), "target value"))
+                for item in info
+            ],
+            groups=[
+                _identity(_value(item, None, binding["group"]), "group")
+                for item in info
+            ],
+            **{key: value for key, value in segment.items() if key != "mode"},
+        )
+        cases = [
+            _decorate(row, lookup[row["recording_id"]], None, problem, binding)
+            for row in rows
+        ]
+        boundary = "raise"
+    else:
+        if events is None or isinstance(events, (str, dict)):
+            raise ValueError("Event epochs require an iterable of event dictionaries")
+        prepared = []
+        for index, event in enumerate(events):
+            if not isinstance(event, dict):
+                raise ValueError("Each event must be a dictionary")
+            event = deepcopy(event)
+            recording_id = event.get("recording_id")
+            if not isinstance(recording_id, str) or recording_id not in lookup:
+                raise ValueError(f"Unknown event recording_id: {recording_id!r}")
+            item = lookup[recording_id]
+            event_id = _identity(
+                _value(
+                    item, event, {"source": "event", "column": binding["events"]["id"]}
+                ),
+                "event id",
+            )
+            onset = _value(
+                item, event, {"source": "event", "column": binding["events"]["onset"]}
+            )
+            if isinstance(onset, (bool, np.bool_)):
+                raise ValueError("Event onset must be finite seconds")
+            try:
+                onset = float(onset)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("Event onset must be finite seconds") from exc
+            row = {
+                # A structured identity avoids delimiter and string/integer
+                # collisions across recording-local event identifiers.
+                "case_id": "event:" + json.dumps([recording_id, event_id]),
+                "recording_id": recording_id,
+                "event_id": event_id,
+                "onset": onset,
+                "source_event_row": index,
+                "source_event": event,
+            }
+            prepared.append(_decorate(row, item, event, problem, binding))
+        cases = _event_cases(info, prepared, tmin=segment["tmin"], tmax=segment["tmax"])
+        boundary = segment["on_out_of_bounds"]
+    return cases, boundary
+
+
+def _configuration(problem, binding):
+    return {
+        "definition": problem,
+        "binding": binding,
+        **{
+            f"{name}_sha256": hashlib.sha256(
+                json.dumps(value, sort_keys=True, allow_nan=False).encode()
+            ).hexdigest()
+            for name, value in (("definition", problem), ("binding", binding))
+        },
+    }
