@@ -1,5 +1,12 @@
 # Classification problems on loaded recordings
 
+`load_bids_dataset` returns complete EDF/BDF recordings with an aligned
+`EEGDatasetInfo` view, reusing the source inspector and opener. Select signals,
+source descriptors and events together with `info.select(X, indices_or_mask)`.
+See [loaded recordings and metadata](../../docs/bids-dataset-info.md) for memory
+costs, copy semantics, available facts and the existing problem-loader handoff.
+The legacy `load_bids_data` interface is unchanged.
+
 For a local BIDS EDF/BDF folder, `inspect_bids_eeg` returns source metadata,
 original event rows and actionable diagnostics without loading signal arrays.
 The version-2 report retains the dataset README/participant dictionary, full

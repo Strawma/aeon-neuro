@@ -11,6 +11,10 @@ and aeon-neuro's existing EEG JSON inheritance resolver. Supported native
 headers are opened through the existing ingestion reader, without calling
 `get_data` or hashing full signal files. All source handles are closed.
 
+For explicit whole-recording loading and paired signal/metadata selection, see
+[loaded BIDS recordings](bids-dataset-info.md). Metadata-only inspection remains
+available without allocating the signal arrays.
+
 ## Inspect and read the diagnostics
 
 ```python

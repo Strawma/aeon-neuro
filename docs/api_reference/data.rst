@@ -21,6 +21,18 @@ Usage
    ../problem-loading
    ../problem-planning
    ../bids-problem-input
+   ../bids-dataset-info
+
+Loaded recordings and metadata
+------------------------------
+
+.. autofunction:: aeon_neuro.datasets.load_bids_dataset
+
+.. autoclass:: aeon_neuro.datasets.EEGDatasetInfo
+   :members:
+
+.. autoclass:: aeon_neuro.datasets.RecordingInfo
+   :members:
 
 Classification case construction
 --------------------------------
