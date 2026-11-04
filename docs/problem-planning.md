@@ -29,6 +29,71 @@ Planning hashes only its small implementation files, not dataset signal files.
 Definitions can be saved before all source facts are available; exact planning
 requires the descriptor fields below rather than guessed sample counts.
 
+## Plan from shared BIDS information
+
+The same planner accepts `EEGDatasetInfo`. Inspection supplies the source facts
+without loading signal arrays; the object supplies events and reported history:
+
+```python
+from aeon_neuro.datasets import (
+    EEGDatasetInfo,
+    inspect_bids_eeg,
+    open_bids_eeg_recording,
+)
+
+root = "/data/study"
+info = EEGDatasetInfo(inspect_bids_eeg(root, subjects=["01", "02"]))
+plan = plan_classification_problem(info, "problem.json", "binding.json")
+dataset = materialize_classification_problem(
+    plan,
+    lambda descriptor: open_bids_eeg_recording(root, descriptor),
+    case_ids=[plan["cases"][0]["case_id"]],
+)
+```
+
+Do not pass a separate `events` argument with the object. Event epochs use its
+events; fixed windows use recording facts without passing events to the case
+rules. Participant targets still use explicit columns such as `participant.group`
+and explicit class mappings. This adds no target inference or second reader.
+An existing saved inspection report can be planned even while signals are absent;
+reading its headers initially still belongs to source inspection.
+
+Shared objects produce **version-2 plans** containing `input_info`, a detached
+source report with any reported history. Plain descriptor/event inputs continue
+to produce **version-1 plans**. Both retain the same case inventory fields and
+use the same enumeration and validation rules as eager construction. Object
+plans additionally fingerprint the metadata implementation and package version
+file. Replaying a plan regenerates it from its authoritative inputs and compares
+the whole result before calling a reader. Changing an event, source descriptor,
+history record, case, configuration or implementation invalidates the saved plan.
+
+Plan versions are distinct from source-report, provenance and authored-document
+versions. Version 1 here keeps the earlier plain-input layout, not an automatic
+migration of old artifacts. Saved plans must be regenerated after an implementation
+fingerprint changes, retaining their authored definitions and source evidence.
+
+## Eager and deferred provenance
+
+For the same shared input and authored documents, full materialization produces
+the same samples, case identities, labels, groups and exclusions as
+`make_classification_problem(X, info, problem, binding)`. The combined
+`metadata["provenance"]` uses identical `source`, `history` and `problem` sections.
+Its `construction` identifies the actual eager or deferred entrypoint and package
+version. Execution through different routes is recorded explicitly.
+
+`metadata["materialization"]` retains the plan ID, selected case IDs, unselected
+case count and source-verification boundary. Source/history provenance keeps the
+full planned input context even when selected cases require only one recording.
+Earlier records may describe processing over a broader population; selecting
+fewer cases does not narrow those earlier claims. `metadata["recordings"]` lists
+only the recordings actually opened. Returned arrays and metadata are detached
+from the plan and input object.
+
+Plain-input materialization retains its separate `metadata["problem"]` contract.
+Neither route certifies arbitrary earlier processing or source content from a
+configuration hash. The explicit source adapter remains responsible for content
+verification. A saved plan is an inspection snapshot, not a signed certificate.
+
 ## A small source catalogue
 
 Each recording descriptor supplies a stable `recording_id` (or `filepath`),

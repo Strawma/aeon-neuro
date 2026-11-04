@@ -10,6 +10,15 @@ All inputs are generated. Run it from an installed source checkout:
 python examples/problem_loading.py
 ```
 
+`metadata_first_problem.py` plans cases from a hypothetical large catalogue,
+then materializes selected intervals from generated local FIF files through an
+explicit cache/opener. Planning reads no signals; local copies demonstrate the
+acquisition boundary without network transfers:
+
+```bash
+python examples/metadata_first_problem.py
+```
+
 `classification.ipynb` generates BrainVision recordings, converts them to BIDS,
 aligns explicitly mapped channel names/orders and constructs labelled windows.
 An aeon distance baseline and CSP+LDA use the same participant-held-out split.

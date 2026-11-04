@@ -92,6 +92,11 @@ also does not certify unchanged signal content without a trusted content hash.
 
 ## Make a classification problem
 
+For sources too large to load completely, pass this same object to
+`plan_classification_problem` and later materialize selected cases. The
+[planning guide](problem-planning.md) describes metadata-only operation, saved
+plan validation and eager/deferred provenance parity.
+
 Scientific labels and grouping remain explicit in the ordinary problem and
 dataset-binding documents. Once those choices are authored, pass the shared
 metadata object to the experimental in-memory builder:

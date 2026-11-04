@@ -326,18 +326,11 @@ def make_classification_problem(X, info, problem, binding):
             info.events if problem["segmentation"]["mode"] == "event_epochs" else None
         ),
     )
-    source = info.to_dict()
-    history = source.pop("history", [])
-    dataset.metadata["provenance"] = {
-        "version": 1,
-        "source": source,
-        "history": history,
-        "problem": dataset.metadata.pop("problem"),
-        "construction": {
-            "implementation": "aeon_neuro.datasets.make_classification_problem",
-            "version": __version__,
-        },
-    }
+    dataset.metadata["provenance"] = _provenance(
+        info,
+        dataset.metadata.pop("problem"),
+        "aeon_neuro.datasets.make_classification_problem",
+    )
     return dataset
 
 
@@ -419,4 +412,18 @@ def _configuration(problem, binding):
             ).hexdigest()
             for name, value in (("definition", problem), ("binding", binding))
         },
+    }
+
+
+def _provenance(info, configuration, implementation):
+    # Eager and deferred routes retain the same input account, while naming
+    # their actual construction entrypoint rather than inventing a shared run.
+    source = info.to_dict()
+    history = source.pop("history", [])
+    return {
+        "version": 1,
+        "source": source,
+        "history": history,
+        "problem": deepcopy(configuration),
+        "construction": {"implementation": implementation, "version": __version__},
     }

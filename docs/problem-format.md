@@ -11,6 +11,10 @@ For BIDS sources loaded with `load_bids_dataset`, the experimental
 accepts the same authored documents as `make_classification_problem(X, info,
 problem, binding)`, supplying events and preserving source/history provenance.
 
+The same case rules also support [metadata-only planning and selected loading](problem-planning.md)
+before signals are available. Both plain catalogues and shared BIDS information
+objects can supply the planning inputs.
+
 ## Complete event problem and binding
 
 This runnable example makes half-second post-cue cases from generated signals:

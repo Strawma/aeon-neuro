@@ -6,6 +6,11 @@ Both share the eager builder's case and binding rules. See the
 [planning guide](../../docs/problem-planning.md) for source-opening and memory
 boundaries; planning does not fetch or read signal arrays.
 
+Pass `EEGDatasetInfo` directly to the planner to retain source facts, its events
+and reported history. Shared-info materialization produces the eager builder's
+same source/history/problem provenance sections, recording the deferred entrypoint
+and selected-case plan ID separately. Plain descriptor/event inputs remain usable.
+
 `inspect_bids_eeg` reads local EDF/BDF headers and BIDS sidecars without loading
 signal arrays. `load_bids_dataset` loads those sources with `EEGDatasetInfo`,
 preserving dataset/participant facts, channel/event tables and source snapshots.

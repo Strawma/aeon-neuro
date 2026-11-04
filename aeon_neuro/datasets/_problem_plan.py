@@ -7,13 +7,15 @@ from pathlib import Path
 
 import numpy as np
 
-from aeon_neuro.datasets import _classification, _problem
+import aeon_neuro
+from aeon_neuro.datasets import _classification, _dataset_info, _problem
 from aeon_neuro.datasets._classification import (
     ClassificationDataset,
     _identifiers,
     _prepare_cases,
     _recording_info,
 )
+from aeon_neuro.datasets._dataset_info import EEGDatasetInfo
 
 
 def _plain(value):
@@ -63,18 +65,22 @@ def plan_classification_problem(metadata, problem, binding, *, events=None):
 
     Parameters
     ----------
-    metadata : list of dict
+    metadata : list of dict or EEGDatasetInfo
         Recording descriptors with recording_id (or filepath), channel_names,
         sampling_frequency and exact positive n_samples. Additional source/release
         references, expected checksums and sizes are retained as declarations.
         Supply facts from a small catalogue, sidecars or previously read headers;
         this function does not discover remote metadata or verify source files.
+        A shared info object supplies its own events and preserves the complete
+        source report and reported history in a version-2 plan.
     problem, binding : dict or path-like
         Version-1 documents used by load_classification_problem. Definition-only
         validation can run before these source descriptors are available.
     events : iterable of dict or None, default=None
         Bound event rows for event epochs. Only metadata is consumed. Source row
         order, explicit eligibility and original event identities are retained.
+        Must be omitted for shared info objects; their own events are used for
+        epochs and no events are passed for fixed windows.
 
     Returns
     -------
@@ -91,6 +97,16 @@ def plan_classification_problem(metadata, problem, binding, *, events=None):
     A metadata plan is not a content-verified source receipt or evaluation split.
     """
     definition, binding = _problem._resolve(problem, binding)
+    shared = metadata if isinstance(metadata, EEGDatasetInfo) else None
+    if shared is not None:
+        if events is not None:
+            raise ValueError("Separate events cannot override an EEGDatasetInfo object")
+        metadata = shared.metadata
+        events = (
+            shared.events
+            if definition["segmentation"]["mode"] == "event_epochs"
+            else None
+        )
     info = _recording_info(metadata)
     cases, boundary = _problem._problem_cases(info, definition, binding, events)
     included, excluded, _, _ = _prepare_cases(
@@ -111,7 +127,7 @@ def plan_classification_problem(metadata, problem, binding, *, events=None):
         shape = [len(included), len(names), length]
     plan = _plain(
         {
-            "format_version": 1,
+            "format_version": 2 if shared is not None else 1,
             "problem": _problem._configuration(definition, binding),
             "recordings": info,
             "cases": included,
@@ -134,15 +150,41 @@ def plan_classification_problem(metadata, problem, binding, *, events=None):
             },
         }
     )
+    if shared is not None:
+        # Bind the original input scope, including earlier processing over a
+        # broader population. Selected loading must not narrow those claims.
+        plan["input_info"] = _plain(shared.to_dict())
+        plan["implementation_sha256"].update(
+            {
+                name: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+                for name, path in (
+                    ("metadata", _dataset_info.__file__),
+                    ("package", aeon_neuro.__file__),
+                )
+            }
+        )
     plan["plan_id"] = _digest(plan)
     return plan
 
 
 def _validated_plan(plan):
+    if (
+        not isinstance(plan, dict)
+        or type(plan.get("format_version")) is not int
+        or plan["format_version"] not in (1, 2)
+    ):
+        raise ValueError("Unsupported problem plan format_version")
     try:
         events = None
         config = plan["problem"]
-        if config["definition"]["segmentation"]["mode"] == "event_epochs":
+        if plan["format_version"] == 2:
+            metadata = EEGDatasetInfo(plan["input_info"])
+        else:
+            metadata = plan["recordings"]
+        if (
+            plan["format_version"] == 1
+            and config["definition"]["segmentation"]["mode"] == "event_epochs"
+        ):
             rows = sorted(
                 [*plan["cases"], *plan["exclusions"]],
                 key=lambda row: row["source_event_row"],
@@ -151,7 +193,7 @@ def _validated_plan(plan):
                 raise ValueError("Event source rows are incomplete or duplicated")
             events = [row["source_event"] for row in rows]
         rebuilt = plan_classification_problem(
-            plan["recordings"], config["definition"], config["binding"], events=events
+            metadata, config["definition"], config["binding"], events=events
         )
         if rebuilt != plan:
             raise ValueError("Problem plan changed or is stale; inspect it again")
@@ -185,6 +227,9 @@ def materialize_classification_problem(plan, open_recording, *, case_ids=None):
         Selected cases, native-valued arrays and provenance with the plan ID.
         Equal lengths are stacked; ragged lengths remain a list. Arrays are
         materialized in memory; this is not streaming estimator fitting.
+        Shared-info plans retain the eager route's source/history/problem
+        provenance sections, with this function named as their constructor.
+        Plain-input plans retain the existing separate problem metadata.
 
     Notes
     -----
@@ -193,6 +238,9 @@ def materialize_classification_problem(plan, open_recording, *, case_ids=None):
     epoch. No recording outside the selected cases is opened by this function.
     Header checks cannot establish full content identity; checksum verification
     belongs to the explicit adapter. Signal finiteness is checked when read.
+    Shared-info provenance retains the full planned input scope, including
+    sources not opened by a case selection. The materialization record identifies
+    actual selected cases, and recording metadata lists only opened sources.
     """
     checked = _validated_plan(plan)
     if not callable(open_recording):
@@ -257,7 +305,7 @@ def materialize_classification_problem(plan, open_recording, *, case_ids=None):
             raw.close()
     if all(value.shape == signals[0].shape for value in signals):
         signals = np.stack(signals)
-    return ClassificationDataset(
+    dataset = ClassificationDataset(
         X=signals,
         y=_identifiers([row["label"] for row in included], "labels"),
         groups=_identifiers([row["group_id"] for row in included], "groups"),
@@ -279,3 +327,10 @@ def materialize_classification_problem(plan, open_recording, *, case_ids=None):
             },
         },
     )
+    if checked["format_version"] == 2:
+        dataset.metadata["provenance"] = _problem._provenance(
+            EEGDatasetInfo(checked["input_info"]),
+            dataset.metadata.pop("problem"),
+            "aeon_neuro.datasets.materialize_classification_problem",
+        )
+    return dataset
