@@ -37,6 +37,7 @@ https://github.com/aeon-toolkit/aeon.
 
 installation.md
 api_reference.md
+bids-braindecode-handoff.md
 ```
 
 ```{toctree}

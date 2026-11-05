@@ -1,5 +1,8 @@
 # Loaded BIDS recordings and aligned metadata
 
+The [Braindecode handoff example](bids-braindecode-handoff.md) shows how selected
+case channels/rate reach a classifier while full source metadata is preserved.
+
 `load_bids_dataset` loads local EDF/BDF recordings and returns their complete
 source metadata through `EEGDatasetInfo`. It reuses the existing
 [source inspector](bids-problem-input.md), snapshots and source opener. Loading

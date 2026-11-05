@@ -1,5 +1,12 @@
 # Examples
 
+`bids_braindecode_handoff.py` connects the shared BIDS information/problem builder
+to the general Braindecode adapter. It exports current case rate/channel order,
+effective model settings and source/problem provenance without fitting. The
+[handoff guide](../docs/bids-braindecode-handoff.md) explains the required geometry
+choice and the generated-data CPU acceptance check. No source metadata is
+rewritten to describe a reduced channel selection.
+
 `problem_loading.py` defines classification problems over already loaded
 recordings using dictionaries or the JSON files in `problem_definitions/`.
 It constructs imagery and response targets on the same event intervals, a
