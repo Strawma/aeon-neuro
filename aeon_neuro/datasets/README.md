@@ -1,27 +1,51 @@
-# Shared EEG information and classification cases
+# Classification problems on loaded recordings
 
-`inspect_bids_eeg` reads local EDF/BDF headers and sidecars without loading signal
-samples. `load_bids_dataset` reuses the source opener to return recordings with
-`EEGDatasetInfo`, preserving dataset/participant facts, channels, events, source
-geometry and file snapshots. The existing `load_bids_data` interface remains
-available. See the [source inspection guide](../../docs/bids-problem-input.md)
-and [loaded metadata guide](../../docs/bids-dataset-info.md).
+For metadata-only planning and selected signal loading, use
+`plan_classification_problem` followed by `materialize_classification_problem`.
+Both share the eager builder's case and binding rules. See the
+[planning guide](../../docs/problem-planning.md) for source-opening and memory
+boundaries; planning does not fetch or read signal arrays.
 
-The existing `make_recording_cases`, `make_fixed_length_cases`, `make_event_cases`
-and `build_classification_dataset` accept shared information as their metadata
-argument. Case labels/groups remain explicit. The builder retains detached
-source/history/construction provenance and exposes case-aligned `dataset.info`;
-no authored problem definition or JSON schema is required.
+Pass `EEGDatasetInfo` directly to the planner to retain source facts, its events
+and reported history. Shared-info materialization produces the eager builder's
+same source/history/problem provenance sections, recording the deferred entrypoint
+and selected-case plan ID separately. Plain descriptor/event inputs remain usable.
 
-`info.select(X, selector)` copies signals with their matching information.
-`info.process` executes supported channel selection, scaling, crop, resample,
-filter and reference operations, updating current layouts and history together.
-`with_history` records an external account without claiming an operation ran.
-Original acquisition facts remain separate from current channels, rate, units
-and sample support. Logical case-channel aliases preserve original channel picks.
+`inspect_bids_eeg` reads local EDF/BDF headers and BIDS sidecars without loading
+signal arrays. `load_bids_dataset` loads those sources with `EEGDatasetInfo`,
+preserving dataset/participant facts, channel/event tables and source snapshots.
+`info.select(X, selector)` copies signals and their metadata together.
+`info.with_history(...)` appends caller-reported processing to a detached view;
+it does not perform processing or update derived layouts.
+See the [source inspection guide](../../docs/bids-problem-input.md) and
+[loaded metadata guide](../../docs/bids-dataset-info.md). Both routes reuse the
+existing source reader and preserve the legacy `load_bids_data` interface.
 
-The [EEG information guide](../../docs/eeg-information.md) covers case construction,
-optional estimator calls, subject validation, detached table views, serialization
-and `.ts` history comments. Direct `info.current_metadata` and
-`info.events_for_cases()` remain available for plain-descriptor integrations;
-pass the object itself to retain its complete source/history context.
+`make_classification_problem(X, info, problem, binding)` uses that shared object
+directly for event or recording targets. It retains explicit class/group choices
+and returns source, reported history and effective problem configuration together
+under `dataset.metadata["provenance"]`. The plain-input loader remains available.
+
+`load_classification_problem(recordings, metadata, problem, binding, events=...)`
+constructs the existing `ClassificationDataset` from explicit problem choices.
+Definitions and bindings can be dictionaries or JSON filenames. Fixed windows
+use recording targets; event epochs can use event or recording targets.
+
+The first format is experimental. It reuses the existing case builders and adds
+no runtime dependencies. The [problem guide](../../docs/problem-format.md)
+starts with runnable examples and lists every supported field and constraint,
+including optional identities and explicit pandas target-code conversion.
+
+Run `python examples/problem_loading.py` from a source checkout for a generated
+example with two event targets, a cohort-window problem and a separately
+validated participant-held-out split.
+
+Constructed problems expose detached case-aligned `dataset.info`. Supported
+`info.process` operations update arrays, current layouts and recorded history
+together. Original acquisition facts remain separate. The
+[EEG information guide](../../docs/eeg-information.md) covers estimator calls,
+subject-grouped validation, event conveniences, pandas views and `.ts` comments.
+
+For plain case construction after processing recordings, pair
+`info.current_metadata` with `info.events_for_cases()`. These share the current
+recording grid; `info.metadata` and `info.events` retain acquisition facts.
