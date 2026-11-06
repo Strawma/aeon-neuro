@@ -31,7 +31,9 @@ case information with the same source, processing and problem provenance.
 
 Decoded MNE EEG arrays use volts even when a BDF sidecar describes stored values
 in microvolts. Original channel-table units remain unchanged in `info.recordings`.
-Explicit case participant bindings take precedence over the recording subject; the original BIDS entity remains in the source recording view. Unknown units are never guessed. Original electrodes and their coordinate system
+Explicit case participant bindings take precedence over the recording subject;
+the original BIDS entity remains in the source recording view. Unknown units
+are never guessed. Original electrodes and their coordinate system
 remain source facts; channel names do not establish measured positions.
 
 Use paired selection for detached arrays and information:
@@ -69,6 +71,26 @@ for `make_event_cases`, using literal source labels and recording participant
 IDs. `group_column` chooses another explicit recording field. Missing labels or
 groups raise. Use a problem binding for class mappings or event-based groups.
 No convenience infers the scientific meaning of source codes.
+
+For the plain case API, pair current descriptors with those events:
+
+```python
+from aeon_neuro.datasets import make_event_cases, build_classification_dataset
+
+metadata = source_info.current_metadata
+candidates = make_event_cases(
+    recordings, metadata, source_info.events_for_cases(), tmin=0.0, tmax=1.0,
+)
+dataset = build_classification_dataset(recordings, metadata, candidates)
+```
+
+`current_metadata` follows supported recording processing and selection, including
+cropped event origins and resampled grids. It returns detached descriptors.
+Only channel names, rate and sample count reflect the current layout; other
+fields remain source context. Original descriptors/events remain in `metadata`
+and `events`. Already segmented case views raise instead of being reused as
+recordings. The plain builder retains its usual provenance; use
+`make_classification_problem` for the shared source/history/problem record.
 
 `recording.events_frame`, `recording.channels_frame` and
 `info.participants_frame` provide detached pandas views. Portable dictionaries
@@ -148,17 +170,34 @@ Plain `fit(X, y)` and `predict(X)` continue to work in sklearn pipelines,
 retain their own interfaces. Passing information through arbitrary pipeline/CV
 routing is separate from the manual aligned selection shown here.
 
-EEGNet early stopping is opt-in through `validation_size`; its default `None`
+`BraindecodeClassifier` and EEGNet share optional early stopping through
+`validation_size`; its default `None`
 retains training on all supplied cases. With information, validation holds out
 entire known subjects from the current fitting collection. Both partitions must
 contain every fitting class. Missing subjects, too few subjects or a
 class-confounded split raise without falling back to random cases. Without
-information, validation uses stratified cases. For a within-person question, explicitly set
+information, validation uses stratified cases. For a within-person question,
+explicitly set
 `validation_strategy="stratified"` to retain metadata while stratifying cases.
 `validation_strategy="subject"` requires known subjects even without the default
-inference rule. The best validation-loss weights are restored. `training_indices_`, `validation_indices_`, `validation_policy_`,
+inference rule. The best validation-loss weights are restored. `training_indices_`,
+`validation_indices_`, `validation_policy_`,
 `validation_history_` and one-based `best_epoch_` record the realized split and
 selection. The outer test set is never supplied to this process.
+
+The merged generic Braindecode adapter uses the same base and validation loop
+as its existing wrappers. Its default 200 epochs and incomplete training-batch
+policy remain unchanged. Every validation/prediction row is included, and fitted
+information and selected weights survive pickle restoration.
+
+For ordinary models, information-derived channel names carry no position claim.
+Explicit `channel_names`, and spatial models requiring positions such as DGCNN,
+use the adapter's existing `standard_1005` template policy. These are template
+coordinates, never measured BIDS electrodes. `channel_geometry_` records
+`names_only` or `standard_1005` when the model accepts channel information.
+Supply explicit constructor channel names to request template positions for an
+ordinary model. Unknown template names raise; nonstandard information-derived
+names remain usable by models that do not require positions.
 
 Other consumers can call `BaseEEGClassifier.validation_split` inside `_fit`.
 The shared base does not add early stopping to estimators that do not use it.

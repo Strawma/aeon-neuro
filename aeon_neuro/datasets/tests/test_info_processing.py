@@ -17,6 +17,46 @@ from aeon_neuro.datasets.tests.test_info_view import example_info
 source = _fixtures.source
 
 
+@pytest.mark.parametrize("processed", [False, True])
+def test_current_descriptors_match_plain_event_cases_and_remain_detached(
+    source, processed
+):
+    """Plain case construction uses the same current grid as the object builder."""
+    from aeon_neuro.datasets import build_classification_dataset, make_event_cases
+
+    X, info = load_bids_dataset(source[0])
+    original = info.metadata
+    if processed:
+        X, info = info.process(X, "channels", names=["C4", "C3"])
+        X, info = info.process(X, "crop", tmin=0.5, tmax=4.0)
+        X, info = info.process(X, "resample", sfreq=16)
+    X, info = info.select(X, [1, 0])
+    metadata = info.current_metadata
+    events = info.events_for_cases()
+    candidates = make_event_cases(X, metadata, events, tmin=0.5, tmax=1.5)
+    for row in candidates:
+        row["channel_names"] = ["C4", "C3"]
+    plain = build_classification_dataset(X, metadata, candidates)
+    problem, binding = _info_problem_documents("event_epochs")
+    eager = make_classification_problem(X, info, problem, binding)
+    np.testing.assert_array_equal(plain.X, eager.X)
+    np.testing.assert_array_equal(plain.groups, eager.groups)
+    assert [row["onset"] for row in events] == (
+        [0.5, 1.5] * 2 if processed else [1, 2] * 2
+    )
+    # Derived views retain full source context independently of current order.
+    assert info.metadata == (original if processed else original[::-1])
+    metadata[0]["channel_names"].clear()
+    assert info.current_metadata[0]["channel_names"] == list(info.channel_names)
+
+
+def test_current_recording_descriptors_reject_segmented_cases():
+    """Already built cases cannot be presented as continuous recording inputs."""
+    _, info = example_info()
+    with pytest.raises(ValueError, match="already built cases"):
+        _ = info.current_metadata
+
+
 def test_processing_chain_updates_current_layout_without_rewriting_source(source):
     """Current channels/rate/units follow values; acquisition facts stay intact."""
     X, source_info = load_bids_dataset(source[0])

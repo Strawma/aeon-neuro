@@ -280,27 +280,38 @@ def _recording_view(info):
     return {"version": 1, "kind": "recordings", "rows": rows, "layouts": layouts}
 
 
-def _problem_inputs(info, onset_column="onset"):
+def _current_metadata(info):
     if info._view is None:
-        return info.metadata, info.events
+        return info.metadata
     if info._view["kind"] != "recordings":
         raise ValueError(
             "Problem construction requires recordings, not already built cases"
         )
     sources = {row["recording_id"]: row for row in info.metadata}
-    descriptors, events = [], []
-    grouped = {}
-    for original in info.events:
-        grouped.setdefault(original["recording_id"], []).append(original)
+    descriptors = []
     for row, layout in zip(info._view["rows"], info._view["layouts"], strict=True):
-        source = sources[row["recording_id"]]
-        descriptor = deepcopy(source)
+        descriptor = deepcopy(sources[row["recording_id"]])
         descriptor.update(
-            channel_names=layout["channel_names"],
+            # Descriptors are public detached views, so their channel list must
+            # not expose the mutable layout used by later estimator checks.
+            channel_names=list(layout["channel_names"]),
             sampling_frequency=layout["sampling_frequency"],
             n_samples=layout["n_samples"],
         )
         descriptors.append(descriptor)
+    return descriptors
+
+
+def _problem_inputs(info, onset_column="onset"):
+    descriptors = _current_metadata(info)
+    if info._view is None:
+        return descriptors, info.events
+    sources = {row["recording_id"]: row for row in info.metadata}
+    events, grouped = [], {}
+    for original in info.events:
+        grouped.setdefault(original["recording_id"], []).append(original)
+    for row, layout in zip(info._view["rows"], info._view["layouts"], strict=True):
+        source = sources[row["recording_id"]]
         for original in grouped.get(row["recording_id"], []):
             event = deepcopy(original)
             # Bound onsets remain seconds from the first current sample; retain

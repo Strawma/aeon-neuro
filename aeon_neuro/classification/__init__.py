@@ -8,6 +8,7 @@ aeon imports:
 wrappers:
 
 1. Braindecode
+    BraindecodeClassifier (any braindecode model)
     EEGNet
     DeepConvNet (DCN)
     EEGConformer
@@ -25,6 +26,7 @@ __all__ = [
     "HIVECOTEV2",
     "MultiRocketHydraClassifier",
     "InceptionTimeClassifier",
+    "BraindecodeClassifier",
     "DeepConvNetClassifier",
     "EEGConformerClassifier",
     "EEGNetClassifier",
@@ -41,6 +43,7 @@ from aeon.classification.hybrid import HIVECOTEV2
 
 from aeon_neuro.classification.base import BaseEEGClassifier
 from aeon_neuro.classification.deep_learning import (
+    BraindecodeClassifier,
     DeepConvNetClassifier,
     EEGConformerClassifier,
     EEGNetClassifier,

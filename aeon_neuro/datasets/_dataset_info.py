@@ -512,8 +512,22 @@ class EEGDatasetInfo:
         return tuple(entry["participant_id"] for entry in self._report["recordings"])
 
     @property
+    def current_metadata(self):
+        """Detached recording descriptors matching current arrays and event times.
+
+        Use with ``events_for_cases`` and the plain recording/case APIs after
+        supported processing or selection. Only channel names, sampling rate and
+        sample count describe the current layout; other fields retain source
+        context. Original descriptors remain in ``metadata``. Already segmented
+        cases raise because they are not recording inputs for case construction.
+        """
+        from aeon_neuro.datasets._info_view import _current_metadata
+
+        return _current_metadata(self)
+
+    @property
     def metadata(self):
-        """List of dict: Detached descriptors for existing problem/case APIs."""
+        """List of dict: Detached original acquisition descriptors."""
         return deepcopy(self._report["recordings"])
 
     @property

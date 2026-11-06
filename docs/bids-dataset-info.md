@@ -41,7 +41,8 @@ Unknown optional facts stay `None`; source rows and `n/a` values retain their me
 | `info.dataset` | Dataset facts, file identities and selected participant scope. |
 | `info.source_ids` | Source recording IDs in signal order. |
 | `info.participant_ids` | One original `sub-` participant ID per recording, in signal order. Multiple recordings may share one participant. |
-| `info.metadata`, `info.events` | Detached descriptors/event rows accepted by existing problem/case APIs. |
+| `info.metadata`, `info.events` | Detached original acquisition descriptors/events. |
+| `info.current_metadata`, `info.events_for_cases()` | Paired current recording descriptors and literal event targets for the plain case API, including after supported processing. |
 | `info.recordings` | Tuple of `RecordingInfo` views in signal order. |
 | `recording.entities` | Source subject/session/task/acquisition/run values, without prefixes. |
 | `recording.sfreq`, `recording.channel_names` | Decoded rate and ordered source channel names. |
@@ -144,9 +145,8 @@ source facts or reported history. The new object route preserves those facts
 without introducing a second parsing or segmentation implementation.
 
 See the [problem guide and field reference](problem-format.md) for supported
-choices and complete examples. This
-increment does not add automatic labels, evaluation groups, DataFrame views
-or companion-file source formats.
+choices and complete examples. Automatic scientific label/group choices and companion-file source formats
+remain outside this interface.
 
 ## Record reported processing
 

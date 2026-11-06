@@ -45,3 +45,7 @@ Constructed problems expose detached case-aligned `dataset.info`. Supported
 together. Original acquisition facts remain separate. The
 [EEG information guide](../../docs/eeg-information.md) covers estimator calls,
 subject-grouped validation, event conveniences, pandas views and `.ts` comments.
+
+For plain case construction after processing recordings, pair
+`info.current_metadata` with `info.events_for_cases()`. These share the current
+recording grid; `info.metadata` and `info.events` retain acquisition facts.
