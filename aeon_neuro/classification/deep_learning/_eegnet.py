@@ -4,12 +4,15 @@ from __future__ import annotations
 
 __all__ = ["EEGNetClassifier"]
 
+from numbers import Integral
+
 import numpy as np
-from aeon.classification import BaseClassifier
 from sklearn.utils import check_random_state
 
+from aeon_neuro.classification.base import BaseEEGClassifier
 
-class EEGNetClassifier(BaseClassifier):
+
+class EEGNetClassifier(BaseEEGClassifier):
     """aeon wrapper around Braindecode's EEGNet model.
 
     This classifier is for equal-length multivariate time series and expects aeon's
@@ -70,6 +73,17 @@ class EEGNetClassifier(BaseClassifier):
         Whether to apply the final layer norm constraint.
     norm_rate : float, default=0.25
         Norm constraint rate.
+    validation_size : float or None, default=None
+        Optional validation fraction. With supplied info, entire known subjects
+        are held out; without info, cases are stratified. None retains training
+        on all supplied cases without early stopping.
+    patience : int, default=5
+        Stop after this many epochs without lower validation loss and restore
+        the best weights. Used only when validation_size is supplied.
+    validation_strategy : {"auto", "subject", "stratified"}, default="auto"
+        Auto holds out subjects with info and stratifies cases without it.
+        Stratified explicitly selects case validation for within-person studies
+        while retaining the supplied EEG information.
 
     References
     ----------
@@ -115,6 +129,9 @@ class EEGNetClassifier(BaseClassifier):
         drop_prob: float = 0.25,
         final_layer_with_constraint: bool = False,
         norm_rate: float = 0.25,
+        validation_size: float | None = None,
+        patience: int = 5,
+        validation_strategy: str = "auto",
     ):
         self.batch_size = batch_size
         self.n_epochs = n_epochs
@@ -141,6 +158,9 @@ class EEGNetClassifier(BaseClassifier):
         self.drop_prob = drop_prob
         self.final_layer_with_constraint = final_layer_with_constraint
         self.norm_rate = norm_rate
+        self.validation_size = validation_size
+        self.patience = patience
+        self.validation_strategy = validation_strategy
 
         self.network_ = None
         self.optimizer_ = None
@@ -167,6 +187,34 @@ class EEGNetClassifier(BaseClassifier):
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
 
+        self.training_indices_ = np.arange(len(X))
+        self.validation_indices_ = np.array([], dtype=int)
+        self.validation_history_ = []
+        self.best_epoch_ = None
+        if self.validation_size is not None:
+            if (
+                isinstance(self.patience, bool)
+                or not isinstance(self.patience, Integral)
+                or self.patience < 1
+            ):
+                raise ValueError("patience must be a positive integer")
+            self.training_indices_, self.validation_indices_ = self.validation_split(
+                y,
+                validation_size=self.validation_size,
+                random_state=seed,
+                strategy=self.validation_strategy,
+            )
+        self.validation_policy_ = (
+            "none"
+            if self.validation_size is None
+            else (
+                "subject"
+                if self.validation_strategy == "subject"
+                or (self.validation_strategy == "auto" and self.info_ is not None)
+                else "stratified cases"
+            )
+        )
+
         self.device_ = self._resolve_device()
         self.network_ = self._build_network(
             n_channels=X.shape[1], n_timepoints=X.shape[2]
@@ -174,7 +222,10 @@ class EEGNetClassifier(BaseClassifier):
         self.optimizer_ = self._build_optimizer(self.network_.parameters())
         self.loss_ = nn.CrossEntropyLoss()
 
-        dataset = TensorDataset(torch.from_numpy(X), torch.from_numpy(y_int))
+        train = self.training_indices_
+        dataset = TensorDataset(
+            torch.from_numpy(X[train]), torch.from_numpy(y_int[train])
+        )
         loader = DataLoader(
             dataset,
             batch_size=min(self.batch_size, len(dataset)),
@@ -184,9 +235,11 @@ class EEGNetClassifier(BaseClassifier):
 
         self.history_ = []
         self.network_.train()
+        best_loss, best_state, stale = float("inf"), None, 0
 
         for epoch in range(self.n_epochs):
             epoch_loss = 0.0
+            self.network_.train()
 
             for xb, yb in loader:
                 xb = xb.to(self.device_)
@@ -203,12 +256,48 @@ class EEGNetClassifier(BaseClassifier):
             epoch_loss /= len(dataset)
             self.history_.append(epoch_loss)
 
+            if self.validation_size is not None:
+                validation = TensorDataset(
+                    torch.from_numpy(X[self.validation_indices_]),
+                    torch.from_numpy(y_int[self.validation_indices_]),
+                )
+                validation_loader = DataLoader(
+                    validation,
+                    batch_size=min(self.batch_size, len(validation)),
+                    shuffle=False,
+                    drop_last=False,
+                )
+                self.network_.eval()
+                total = 0.0
+                with torch.no_grad():
+                    for xb, yb in validation_loader:
+                        logits = self._coerce_logits(self.network_(xb.to(self.device_)))
+                        loss = self.loss_(logits, yb.to(self.device_))
+                        total += loss.item() * len(xb)
+                validation_loss = total / len(validation)
+                if not np.isfinite(validation_loss):
+                    raise ValueError("Validation loss is not finite")
+                self.validation_history_.append(validation_loss)
+                if validation_loss < best_loss:
+                    best_loss, stale = validation_loss, 0
+                    best_state = {
+                        key: value.detach().clone()
+                        for key, value in self.network_.state_dict().items()
+                    }
+                    self.best_epoch_ = epoch + 1
+                else:
+                    stale += 1
+                if stale >= self.patience:
+                    break
+
             if self.verbose:
                 print(  # noqa: T201
                     f"Epoch {epoch + 1}/{self.n_epochs} - "
                     f"training loss: {epoch_loss:.6f}"
                 )
 
+        if best_state is not None:
+            self.network_.load_state_dict(best_state)
         return self
 
     def _predict_proba(self, X: np.ndarray) -> np.ndarray:
@@ -262,6 +351,7 @@ class EEGNetClassifier(BaseClassifier):
             n_chans=n_channels,
             n_outputs=self.n_classes_,
             n_times=n_timepoints,
+            sfreq=self.sfreq_,
             final_conv_length=self.final_conv_length,
             pool_mode=self.pool_mode,
             F1=self.F1,

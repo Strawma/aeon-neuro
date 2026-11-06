@@ -21,6 +21,7 @@ Riemannian-MDM (RMD)
 """
 
 __all__ = [
+    "BaseEEGClassifier",
     "HIVECOTEV2",
     "MultiRocketHydraClassifier",
     "InceptionTimeClassifier",
@@ -38,6 +39,7 @@ from aeon.classification.convolution_based import MultiRocketHydraClassifier
 from aeon.classification.deep_learning import InceptionTimeClassifier, TimeCNNClassifier
 from aeon.classification.hybrid import HIVECOTEV2
 
+from aeon_neuro.classification.base import BaseEEGClassifier
 from aeon_neuro.classification.deep_learning import (
     DeepConvNetClassifier,
     EEGConformerClassifier,

@@ -5,11 +5,12 @@ from __future__ import annotations
 __all__ = ["EEGConformerClassifier"]
 
 import numpy as np
-from aeon.classification import BaseClassifier
 from sklearn.utils import check_random_state
 
+from aeon_neuro.classification.base import BaseEEGClassifier
 
-class EEGConformerClassifier(BaseClassifier):
+
+class EEGConformerClassifier(BaseEEGClassifier):
     """aeon wrapper around Braindecode's EEGConformer model.
 
     This classifier is for equal-length multivariate time series and expects aeon's

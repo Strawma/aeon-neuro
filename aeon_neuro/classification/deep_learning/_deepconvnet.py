@@ -7,11 +7,12 @@ from __future__ import annotations
 __all__ = ["DeepConvNetClassifier"]
 
 import numpy as np
-from aeon.classification import BaseClassifier
 from sklearn.utils import check_random_state
 
+from aeon_neuro.classification.base import BaseEEGClassifier
 
-class DeepConvNetClassifier(BaseClassifier):
+
+class DeepConvNetClassifier(BaseEEGClassifier):
     """aeon wrapper around Braindecode's Deep ConvNet (Deep4Net).
 
     This classifier is for equal-length collection data and accepts multivariate
