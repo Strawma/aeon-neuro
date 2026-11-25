@@ -99,6 +99,9 @@ of method work well or fail.
 
 ## Installation
 
+For the experimental JSON interface shared with the EEG Console, see
+[Executable EEG experiment recipes](docs/experiment-recipes.md).
+
 `aeon-neuro` requires Python 3.9 or later. Full installation instructions are available in the
 documentation.
 
